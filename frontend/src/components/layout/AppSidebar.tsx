@@ -7,7 +7,7 @@ import {
     ChevronDown,
     PanelLeftClose,
     PanelLeft,
-    BookOpen,
+    MessageCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -33,6 +33,7 @@ interface NavGroup {
 
 const navItems: NavItem[] = [
     { label: 'Dashboard', path: '/', icon: <LayoutDashboard className="size-4" /> },
+    { label: 'Chat', path: '/chat', icon: <MessageCircle className="size-4" /> },
 ];
 
 const navGroups: NavGroup[] = [

@@ -3,6 +3,7 @@ import { Layout } from './Layout';
 import { HomePage } from '@/pages/HomePage';
 import { SetupPage } from '@/pages/SetupPage';
 import { ThemeColorsPage } from '@/pages/ThemeColorsPage';
+import { ChatPage } from '@/pages/ChatPage';
 
 export const router = createBrowserRouter([
     {
@@ -11,6 +12,10 @@ export const router = createBrowserRouter([
             {
                 path: '/',
                 element: <HomePage />,
+            },
+            {
+                path: '/chat',
+                element: <ChatPage />,
             },
             {
                 path: '/setup',
