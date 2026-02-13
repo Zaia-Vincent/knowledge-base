@@ -1,4 +1,5 @@
 import { createContext, useCallback, useEffect, useMemo, useState } from 'react';
+import { loadColors, applyColorsToDOM, fetchColorsFromApi } from '@/hooks/use-theme-colors';
 
 export type Theme = 'light' | 'dark';
 
@@ -34,6 +35,24 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         applyTheme(theme);
     }, [theme, applyTheme]);
+
+    // Apply saved theme colors on startup.
+    // 1. Immediately apply from localStorage cache (avoids flash of default colors).
+    // 2. Then fetch from backend API (source of truth) and refresh.
+    useEffect(() => {
+        // Instant: apply cached colors
+        const cached = loadColors();
+        if (cached) {
+            applyColorsToDOM(cached);
+        }
+
+        // Async: fetch latest from backend and apply
+        fetchColorsFromApi().then((result) => {
+            if (result) {
+                applyColorsToDOM(result.colors);
+            }
+        });
+    }, []);
 
     const setTheme = useCallback((t: Theme) => {
         setThemeState(t);

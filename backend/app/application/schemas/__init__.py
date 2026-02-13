@@ -7,6 +7,7 @@ from .chat import (
     ContentPartSchema,
     TokenUsageResponse,
 )
+from .client_record import ClientRecordCreate, ClientRecordUpdate, ClientRecordResponse
 
 __all__ = [
     "ArticleCreate",
@@ -18,4 +19,8 @@ __all__ = [
     "ChatRequestLogResponse",
     "ContentPartSchema",
     "TokenUsageResponse",
+    "ClientRecordCreate",
+    "ClientRecordUpdate",
+    "ClientRecordResponse",
 ]
+

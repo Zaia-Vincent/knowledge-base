@@ -1,0 +1,618 @@
+# ══════════════════════════════════════════════════════════════════════
+# LAYER 1 — FOUNDATIONAL ONTOLOGY
+# ══════════════════════════════════════════════════════════════════════
+# The "grammar" of the ontology. Defines the most abstract categories
+# that everything else specialises from. Inspired by BFO (ISO 21838-2)
+# and the Common Core Ontologies, but simplified for enterprise use
+# with plain-language names.
+#
+# This layer should almost NEVER change. It is locked by default.
+#
+# Each concept carries a `bfo_equivalent` annotation for formal
+# interoperability with BFO-based ontology ecosystems.
+# ══════════════════════════════════════════════════════════════════════
+
+layer:
+  id: L1
+  name: "Foundation"
+  version: "1.0.0"
+  locked: true
+  namespace: "foundation"
+
+
+# ──────────────────────────────────────────────────────────────────────
+# ROOT
+# ──────────────────────────────────────────────────────────────────────
+
+concepts:
+
+  # ════════════════════════════════════════════════════════════════════
+  # Thing — the absolute root of every concept in the ontology
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: "Thing"
+    layer: L1
+    inherits: null
+    abstract: true
+    label: "Thing"
+    description: >
+      The root concept. Everything in the ontology is a Thing.
+    synonyms: []
+    mixins: []
+    properties:
+      - name: "label"
+        type: "string"
+        required: true
+        description: "Human-readable name"
+      - name: "description"
+        type: "string"
+        required: false
+        description: "Plain-language explanation"
+      - name: "synonyms"
+        type: "string[]"
+        required: false
+        description: "Alternative names (multilingual, abbreviations, jargon)"
+      - name: "identifier"
+        type: "ref:Identifier"
+        required: false
+        description: "Unique reference or designator"
+    relationships:
+      - name: "hasPart"
+        target: "Thing"
+        cardinality: "0..*"
+        inverse: "partOf"
+        description: "This thing is composed of other things"
+      - name: "hasCharacteristic"
+        target: "Characteristic"
+        cardinality: "0..*"
+        description: "A quality, measure, or attribute of this thing"
+
+
+  # ════════════════════════════════════════════════════════════════════
+  # ENTITY — things that exist and persist through time
+  # ════════════════════════════════════════════════════════════════════
+  # Children: Actor, Object, Place, Characteristic, Role, Resource
+
+  - id: "Entity"
+    layer: L1
+    inherits: "Thing"
+    abstract: true
+    label: "Entity"
+    bfo_equivalent: "Continuant"
+    description: >
+      Things that exist and persist through time. Contrasted with
+      Activities, which happen and unfold over time.
+    synonyms: []
+    mixins: []
+    properties: []
+    relationships:
+      - name: "involvedIn"
+        target: "Activity"
+        cardinality: "0..*"
+        description: "This entity is involved in an activity (broadest link)"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # ENTITY → ACTOR  (who can act)
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "Actor"
+    layer: L1
+    inherits: "Entity"
+    abstract: true
+    label: "Actor"
+    bfo_equivalent: "Agent"
+    description: >
+      People and organisations that can perform intentional acts.
+      An Actor can sign a contract, approve a document, or make a
+      decision. Products, assets, and facilities are NOT Actors.
+    synonyms: []
+    mixins: []
+    properties: []
+    relationships:
+      - name: "participatesIn"
+        target: "Activity"
+        cardinality: "0..*"
+        description: "This actor actively participates in an activity"
+      - name: "hasRole"
+        target: "Role"
+        cardinality: "0..*"
+        description: "A role this actor plays in some context"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # ENTITY → OBJECT  (tangible things that do not act)
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "Object"
+    layer: L1
+    inherits: "Entity"
+    abstract: true
+    label: "Object"
+    bfo_equivalent: "MaterialEntity"
+    description: >
+      Physical or tangible things that exist but do not perform
+      intentional acts. Products, assets, equipment, and buildings
+      are Objects. They can be located, owned, and used — but they
+      do not decide or approve.
+    synonyms: []
+    mixins: []
+    properties: []
+    relationships:
+      - name: "locatedIn"
+        target: "Place"
+        cardinality: "0..1"
+        description: "Where this object is physically located"
+      - name: "ownedBy"
+        target: "Actor"
+        cardinality: "0..1"
+        description: "The actor that owns this object"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # ENTITY → PLACE  (spatial regions)
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "Place"
+    layer: L1
+    inherits: "Entity"
+    abstract: false
+    label: "Place"
+    bfo_equivalent: "Site"
+    description: >
+      A spatial region: a physical location, a geographic area,
+      or a virtual space.
+    synonyms:
+      - "location"
+      - "site"
+      - "locatie"
+      - "standplaats"
+    mixins: []
+    properties: []
+    relationships: []
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # ENTITY → CHARACTERISTIC  (qualities, measures)
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "Characteristic"
+    layer: L1
+    inherits: "Entity"
+    abstract: true
+    label: "Characteristic"
+    bfo_equivalent: "Quality"
+    description: >
+      A quality, measure, or attribute of something. Characteristics
+      depend on the thing they describe — they do not exist on their
+      own. Examples: weight, colour, temperature, priority, status.
+    synonyms:
+      - "quality"
+      - "attribute"
+      - "kenmerk"
+    mixins: []
+    properties: []
+    relationships: []
+
+  - id: "Quantity"
+    layer: L1
+    inherits: "Characteristic"
+    abstract: false
+    label: "Quantity"
+    description: >
+      A measurable value with a numeric amount and optionally a unit.
+    synonyms:
+      - "measure"
+      - "measurement"
+      - "hoeveelheid"
+    mixins: []
+    properties:
+      - name: "numeric_value"
+        type: "decimal"
+        required: true
+        description: "The numeric amount"
+      - name: "unit"
+        type: "string"
+        required: false
+        description: "Unit of measure (kg, m, EUR, hours, etc.)"
+    relationships: []
+
+  - id: "Status"
+    layer: L1
+    inherits: "Characteristic"
+    abstract: false
+    label: "Status"
+    description: >
+      A lifecycle state or condition. Used to track where something
+      is in a process (Draft, Active, Closed, etc.).
+    synonyms:
+      - "state"
+      - "lifecycle phase"
+      - "toestand"
+    mixins: []
+    properties:
+      - name: "status_value"
+        type: "string"
+        required: true
+        description: "The current status label"
+      - name: "effective_from"
+        type: "datetime"
+        required: false
+        description: "When this status became effective"
+    relationships: []
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # ENTITY → ROLE  (contextual function)
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "Role"
+    layer: L1
+    inherits: "Entity"
+    abstract: true
+    label: "Role"
+    bfo_equivalent: "Role"
+    description: >
+      A contextual function that an actor or thing plays. Roles are
+      not inherent — they depend on context. The same person can be
+      an Approver in one process and a Reviewer in another.
+    synonyms:
+      - "function"
+      - "capacity"
+      - "rol"
+    mixins: []
+    properties:
+      - name: "role_name"
+        type: "string"
+        required: true
+        description: "Human-readable name of the role"
+    relationships:
+      - name: "heldBy"
+        target: "Actor"
+        cardinality: "0..*"
+        inverse: "hasRole"
+        description: "Which actors currently hold this role"
+      - name: "appliesTo"
+        target: "Activity"
+        cardinality: "0..*"
+        description: "Activities where this role is relevant"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # ENTITY → RESOURCE  (information that can be recorded)
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "Resource"
+    layer: L1
+    inherits: "Entity"
+    abstract: true
+    label: "Resource"
+    bfo_equivalent: "InformationContentEntity (IAO)"
+    description: >
+      Content that can be recorded, stored, transmitted, and consumed.
+      The parent of all documents, records, messages, and identifiers.
+    synonyms:
+      - "information"
+      - "content"
+      - "informatie"
+    mixins: []
+    properties: []
+    relationships:
+      - name: "isAbout"
+        target: "Thing"
+        cardinality: "0..*"
+        description: "What this resource is about (its subject matter)"
+      - name: "createdBy"
+        target: "Actor"
+        cardinality: "0..1"
+        description: "Who created this resource"
+
+  - id: "Document"
+    layer: L1
+    inherits: "Resource"
+    abstract: false
+    label: "Document"
+    description: >
+      A bounded information artifact — a file, report, form, or any
+      discrete piece of recorded content. The primary target of
+      metadata extraction.
+    synonyms:
+      - "doc"
+      - "file"
+      - "document"
+      - "bestand"
+    mixins:
+      - "Trackable"
+    properties:
+      - name: "document_date"
+        type: "date"
+        required: true
+        description: "The date of the document (issue date, publication date, etc.)"
+      - name: "document_type"
+        type: "string"
+        required: true
+        description: "High-level classification of the document type"
+      - name: "summary"
+        type: "string"
+        required: false
+        description: "Brief summary or abstract of the document content"
+      - name: "author"
+        type: "ref:Actor"
+        required: false
+        description: "The person or organisation that authored this document"
+    relationships: []
+    extraction_template:
+      classification_hints:
+        - "document"
+        - "doc"
+        - "file"
+        - "report"
+        - "form"
+      file_patterns:
+        - "**/*"
+
+  - id: "DataRecord"
+    layer: L1
+    inherits: "Resource"
+    abstract: false
+    label: "DataRecord"
+    description: >
+      A structured information entry — a row in a database, a log
+      entry, a transaction record. Distinguished from Document by
+      being structured and typically machine-generated.
+    synonyms:
+      - "record"
+      - "entry"
+      - "registratie"
+      - "gegevensrecord"
+    mixins:
+      - "Trackable"
+    properties:
+      - name: "record_date"
+        type: "datetime"
+        required: true
+        description: "When this record was created or became effective"
+      - name: "source_system"
+        type: "string"
+        required: false
+        description: "The system that generated this record"
+    relationships: []
+
+  - id: "Message"
+    layer: L1
+    inherits: "Resource"
+    abstract: false
+    label: "Message"
+    description: >
+      A communication between actors — an email, chat message,
+      notification, or letter.
+    synonyms:
+      - "email"
+      - "notification"
+      - "communication"
+      - "bericht"
+    mixins:
+      - "Trackable"
+    properties:
+      - name: "sent_date"
+        type: "datetime"
+        required: false
+        description: "When the message was sent"
+      - name: "sender"
+        type: "ref:Actor"
+        required: false
+        description: "Who sent this message"
+      - name: "recipients"
+        type: "ref:Actor[]"
+        required: false
+        description: "Who received this message"
+      - name: "subject"
+        type: "string"
+        required: false
+        description: "Subject line or topic"
+    relationships: []
+
+  - id: "Identifier"
+    layer: L1
+    inherits: "Resource"
+    abstract: false
+    label: "Identifier"
+    description: >
+      A designator that uniquely identifies something — an ID, code,
+      reference number, or URI.
+    synonyms:
+      - "ID"
+      - "code"
+      - "reference"
+      - "kenmerk"
+      - "referentie"
+    mixins: []
+    properties:
+      - name: "value"
+        type: "string"
+        required: true
+        description: "The identifier value (the actual ID string)"
+      - name: "scheme"
+        type: "string"
+        required: false
+        description: "The naming scheme (e.g., 'VAT', 'DUNS', 'LEI', 'internal')"
+      - name: "issued_by"
+        type: "ref:Actor"
+        required: false
+        description: "The authority that issued this identifier"
+    relationships:
+      - name: "identifies"
+        target: "Thing"
+        cardinality: "1..1"
+        description: "The thing this identifier designates"
+
+
+  # ════════════════════════════════════════════════════════════════════
+  # ACTIVITY — things that happen over time
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: "Activity"
+    layer: L1
+    inherits: "Thing"
+    abstract: true
+    label: "Activity"
+    bfo_equivalent: "Occurrent → Process"
+    description: >
+      Something that happens, unfolds over time, and has a beginning
+      and end. Contrasted with Entities, which persist. The parent
+      of all processes, tasks, and events.
+    synonyms: []
+    mixins: []
+    properties: []
+    relationships:
+      - name: "hasInput"
+        target: "Thing"
+        cardinality: "0..*"
+        description: "Things consumed or used by this activity"
+      - name: "hasOutput"
+        target: "Thing"
+        cardinality: "0..*"
+        description: "Things produced by this activity"
+      - name: "hasPart"
+        target: "Activity"
+        cardinality: "0..*"
+        inverse: "partOf"
+        description: "Sub-activities that compose this activity"
+      - name: "occursAt"
+        target: "TimePeriod"
+        cardinality: "0..1"
+        description: "When this activity takes place"
+      - name: "occursIn"
+        target: "Place"
+        cardinality: "0..1"
+        description: "Where this activity takes place"
+
+  - id: "Process"
+    layer: L1
+    inherits: "Activity"
+    abstract: false
+    label: "Process"
+    description: >
+      A sequence of steps or activities with a defined goal.
+      Processes can be planned (intentional, goal-directed) or
+      observed. They are the primary subject of process ontologies.
+    synonyms:
+      - "workflow"
+      - "procedure"
+      - "proces"
+    mixins: []
+    properties: []
+    relationships: []
+
+  - id: "Task"
+    layer: L1
+    inherits: "Activity"
+    abstract: false
+    label: "Task"
+    description: >
+      An atomic unit of work — the smallest meaningful action that
+      can be assigned, tracked, and completed.
+    synonyms:
+      - "action"
+      - "step"
+      - "work item"
+      - "taak"
+      - "opdracht"
+    mixins: []
+    properties: []
+    relationships: []
+
+  - id: "Event"
+    layer: L1
+    inherits: "Activity"
+    abstract: false
+    label: "Event"
+    description: >
+      A noteworthy occurrence, often instantaneous or very short.
+      Events are typically triggers — they cause processes or tasks
+      to start, change, or end.
+    synonyms:
+      - "incident"
+      - "occurrence"
+      - "happening"
+      - "gebeurtenis"
+      - "voorval"
+    mixins: []
+    properties: []
+    relationships: []
+
+
+  # ════════════════════════════════════════════════════════════════════
+  # TIMEPERIOD — spans of time
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: "TimePeriod"
+    layer: L1
+    inherits: "Thing"
+    abstract: false
+    label: "TimePeriod"
+    bfo_equivalent: "TemporalRegion"
+    description: >
+      A span of time — a date range, a fiscal quarter, a project
+      phase, or any bounded interval.
+    synonyms:
+      - "period"
+      - "timeframe"
+      - "duration"
+      - "interval"
+      - "tijdvak"
+      - "periode"
+    mixins: []
+    properties:
+      - name: "start_date"
+        type: "datetime"
+        required: false
+        description: "When this time period begins"
+      - name: "end_date"
+        type: "datetime"
+        required: false
+        description: "When this time period ends"
+      - name: "duration"
+        type: "string"
+        required: false
+        description: "ISO 8601 duration (e.g., P30D, PT8H, P1Y)"
+    relationships: []
+
+
+  # ════════════════════════════════════════════════════════════════════
+  # STATE — conditions that hold during a period
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: "State"
+    layer: L1
+    inherits: "Thing"
+    abstract: false
+    label: "State"
+    bfo_equivalent: "State"
+    description: >
+      A condition that holds during a period. States describe the
+      current situation of a thing — whether a process is running,
+      whether a document is approved, whether a machine is idle.
+    synonyms:
+      - "condition"
+      - "status"
+      - "toestand"
+    mixins: []
+    properties:
+      - name: "state_value"
+        type: "string"
+        required: true
+        description: "The name or label of this state"
+      - name: "is_terminal"
+        type: "boolean"
+        required: false
+        description: "Whether this is a final state (no further transitions)"
+    relationships:
+      - name: "appliesToEntity"
+        target: "Entity"
+        cardinality: "0..*"
+        description: "The entities currently in this state"
+      - name: "followedBy"
+        target: "State"
+        cardinality: "0..*"
+        description: "States that can follow this one (valid transitions)"

@@ -1,0 +1,293 @@
+# ══════════════════════════════════════════════════════════════════════
+# LAYER 1 — CROSS-CUTTING PROPERTY SETS (MIXINS)
+# ══════════════════════════════════════════════════════════════════════
+# Mixins are reusable bundles of properties that can be applied to any
+# concept across all layers. They work like interfaces in OO design:
+# they inject a consistent set of properties without affecting the
+# inheritance hierarchy.
+#
+# Usage in a concept definition:
+#   mixins: ["Trackable", "Auditable"]
+#
+# When a concept declares a mixin, ALL of that mixin's properties are
+# added to the concept (and inherited by all its children).
+#
+# Mixins are defined at Layer 1 but can be applied at any layer.
+# ══════════════════════════════════════════════════════════════════════
+
+layer:
+  id: L1
+  name: "Foundation"
+  version: "1.0.0"
+  locked: true
+  namespace: "foundation"
+
+
+mixins:
+
+  # ──────────────────────────────────────────────────────────────────
+  # Trackable
+  # ──────────────────────────────────────────────────────────────────
+  # When was this created, by whom, and how many times has it changed?
+  # Apply to anything that needs an audit trail of modifications.
+  #
+  # Typical use: Documents, Processes, Assets, Organisations
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "Trackable"
+    label: "Trackable"
+    description: >
+      Tracks creation and modification metadata. Applied to any concept
+      where you need to know who created or changed it and when.
+    properties:
+      - name: "created_date"
+        type: "datetime"
+        required: true
+        description: "When this item was first created"
+      - name: "created_by"
+        type: "ref:Actor"
+        required: false
+        description: "The actor who created this item"
+      - name: "modified_date"
+        type: "datetime"
+        required: false
+        description: "When this item was last modified"
+      - name: "modified_by"
+        type: "ref:Actor"
+        required: false
+        description: "The actor who last modified this item"
+      - name: "version"
+        type: "integer"
+        required: false
+        default: 1
+        description: "Version counter, incremented on each significant change"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # Classifiable
+  # ──────────────────────────────────────────────────────────────────
+  # Can this thing be categorised, tagged, prioritised, and given a
+  # lifecycle status? Apply to anything that needs flexible labelling.
+  #
+  # Typical use: Processes, Tasks, Products, Documents
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "Classifiable"
+    label: "Classifiable"
+    description: >
+      Adds categorisation, tagging, status, and priority properties.
+      Applied to concepts that need flexible classification beyond
+      their position in the ontology hierarchy.
+    properties:
+      - name: "categories"
+        type: "ref:Classification[]"
+        required: false
+        description: "Formal classifications from a controlled vocabulary"
+      - name: "tags"
+        type: "string[]"
+        required: false
+        description: "Free-form tags for ad-hoc grouping and search"
+      - name: "status"
+        type: "ref:Status"
+        required: false
+        description: "Current lifecycle status"
+      - name: "priority"
+        type: "enum"
+        values: ["Low", "Medium", "High", "Critical"]
+        required: false
+        description: "Priority level"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # Auditable
+  # ──────────────────────────────────────────────────────────────────
+  # Does this thing need a formal compliance audit trail? Apply to
+  # anything subject to regulatory, legal, or quality requirements.
+  #
+  # Typical use: Financial Documents, Contracts, Assets, Quality Records
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "Auditable"
+    label: "Auditable"
+    description: >
+      Adds a formal audit trail and compliance tracking. Applied to
+      concepts that are subject to regulatory, legal, or quality
+      oversight and may be reviewed during audits.
+    properties:
+      - name: "audit_trail"
+        type: "AuditEntry[]"
+        required: false
+        description: >
+          Ordered list of audit events. Each entry records who did what
+          and when. Structure: { date, actor, action, notes }.
+      - name: "last_audited_by"
+        type: "ref:Actor"
+        required: false
+        description: "The actor who last reviewed or audited this item"
+      - name: "last_audited_on"
+        type: "date"
+        required: false
+        description: "Date of the most recent audit or review"
+      - name: "compliance_status"
+        type: "enum"
+        values: ["Compliant", "NonCompliant", "PendingReview", "Exempt", "NotAssessed"]
+        required: false
+        description: "Current compliance standing"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # Locatable
+  # ──────────────────────────────────────────────────────────────────
+  # Does this thing have a geographic or spatial location? Apply to
+  # anything that exists in or relates to a physical place.
+  #
+  # Typical use: Facilities, Assets, Persons, Organisations
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "Locatable"
+    label: "Locatable"
+    description: >
+      Adds geographic and spatial location properties. Applied to
+      concepts that have a meaningful physical or regional location.
+    properties:
+      - name: "location"
+        type: "ref:Place"
+        required: false
+        description: "Reference to the Place where this item is located"
+      - name: "region"
+        type: "string"
+        required: false
+        description: "Geographic region (e.g., 'EMEA', 'Flanders', 'Midwest')"
+      - name: "country"
+        type: "string"
+        required: false
+        description: "ISO 3166-1 alpha-2 country code (e.g., 'BE', 'NL', 'DE')"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # HasMonetaryValue
+  # ──────────────────────────────────────────────────────────────────
+  # Does this thing have a financial value? Apply to anything with
+  # an amount expressed in currency.
+  #
+  # Typical use: Invoices, Purchase Orders, Budgets, Assets, Projects
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "HasMonetaryValue"
+    label: "HasMonetaryValue"
+    description: >
+      Adds monetary amount properties with currency and optional
+      exchange rate for multi-currency environments.
+    properties:
+      - name: "amount"
+        type: "decimal"
+        required: true
+        description: "The monetary amount in the specified currency"
+      - name: "currency"
+        type: "string"
+        required: true
+        description: "ISO 4217 currency code (e.g., 'EUR', 'USD', 'GBP')"
+      - name: "exchange_rate"
+        type: "decimal"
+        required: false
+        description: >
+          Exchange rate to the organisation's base currency at time of
+          recording. Only needed in multi-currency environments.
+      - name: "amount_base_currency"
+        type: "decimal"
+        required: false
+        description: >
+          The amount converted to the organisation's base currency.
+          Calculated as: amount × exchange_rate.
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # SourceMapped
+  # ──────────────────────────────────────────────────────────────────
+  # Was this item extracted from a source system? Apply to anything
+  # that enters the ontology via metadata extraction, ETL, or
+  # integration rather than direct human entry.
+  #
+  # Typical use: Extracted Documents, Imported Records, Synced Data
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "SourceMapped"
+    label: "SourceMapped"
+    description: >
+      Tracks provenance from source systems. Applied to concepts whose
+      instances are imported, extracted, or synced from external systems
+      (ERP, CRM, file shares, etc.). Essential for lineage and trust.
+    properties:
+      - name: "source_system"
+        type: "string"
+        required: true
+        description: "Name of the source system (e.g., 'SAP ERP', 'SharePoint', 'Salesforce')"
+      - name: "source_location"
+        type: "string"
+        required: false
+        description: >
+          Location within the source system (e.g., table name, folder path,
+          API endpoint, SharePoint library).
+      - name: "source_reference"
+        type: "string"
+        required: false
+        description: "The original ID or reference in the source system"
+      - name: "confidence"
+        type: "decimal"
+        required: false
+        description: >
+          Confidence score (0.0–1.0) of the extraction or mapping.
+          Only relevant for AI-extracted metadata.
+        constraints:
+          min: 0.0
+          max: 1.0
+      - name: "extraction_method"
+        type: "enum"
+        values: ["Manual", "RuleBased", "LLMExtracted", "APISync", "ETL"]
+        required: false
+        description: "How this data was extracted or imported"
+
+
+# ══════════════════════════════════════════════════════════════════════
+# EMBEDDED TYPES
+# ══════════════════════════════════════════════════════════════════════
+# These are not full concepts — they are lightweight value types used
+# as property types within mixins and concepts. They do not participate
+# in the inheritance hierarchy.
+# ══════════════════════════════════════════════════════════════════════
+
+embedded_types:
+
+  - id: "AuditEntry"
+    description: "A single entry in an audit trail"
+    properties:
+      - name: "date"
+        type: "datetime"
+        required: true
+      - name: "actor"
+        type: "ref:Actor"
+        required: true
+      - name: "action"
+        type: "string"
+        required: true
+        description: "What was done (e.g., 'Approved', 'Rejected', 'Modified', 'Reviewed')"
+      - name: "notes"
+        type: "string"
+        required: false
+        description: "Free-text notes or justification"
+
+  - id: "Classification"
+    description: "A label from a controlled vocabulary"
+    properties:
+      - name: "scheme"
+        type: "string"
+        required: true
+        description: "The vocabulary or taxonomy this label comes from"
+      - name: "value"
+        type: "string"
+        required: true
+        description: "The classification label"
+      - name: "confidence"
+        type: "decimal"
+        required: false
+        description: "Confidence score if auto-classified (0.0–1.0)"

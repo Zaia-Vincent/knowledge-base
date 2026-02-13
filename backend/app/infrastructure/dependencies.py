@@ -6,11 +6,12 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.application.services import ArticleService, ChatCompletionService
+from app.application.services import ArticleService, ChatCompletionService, ClientRecordService
 from app.infrastructure.database.session import get_db_session
 from app.infrastructure.database.repositories import (
     SQLAlchemyArticleRepository,
     SQLAlchemyChatRequestLogRepository,
+    SQLAlchemyClientRecordRepository,
 )
 from app.infrastructure.openrouter import OpenRouterClient
 
@@ -39,3 +40,12 @@ async def get_chat_completion_service(
     )
     log_repository = SQLAlchemyChatRequestLogRepository(session)
     yield ChatCompletionService(provider=provider, log_repository=log_repository)
+
+
+async def get_client_record_service(
+    session: AsyncSession = Depends(get_db_session),
+) -> AsyncGenerator[ClientRecordService, None]:
+    """Provides a ClientRecordService instance with its repository wired up."""
+    repository = SQLAlchemyClientRecordRepository(session)
+    yield ClientRecordService(repository)
+

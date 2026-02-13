@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { clientRecordsApi, type ClientRecord } from '@/lib/client-records-api';
 
 /**
  * Default CSS variable values for light and dark modes.
@@ -72,7 +73,15 @@ export const DEFAULT_COLORS: ThemeColors = {
     dark: DEFAULT_DARK,
 };
 
+/** localStorage key — used as a fast startup cache for theme colors. */
 const STORAGE_KEY = 'kb-theme-colors';
+
+/** localStorage key — caches the backend record ID so we can update rather than re-create. */
+const RECORD_ID_KEY = 'kb-theme-colors-record-id';
+
+/** Scoping constants for the client-records API. */
+const MODULE_NAME = 'setup';
+const ENTITY_TYPE = 'theme-colors';
 
 // CSS variable names to update
 const CSS_VARS: (keyof ThemeColorSet)[] = [
@@ -102,7 +111,11 @@ export const COLOR_LABELS: Record<keyof ThemeColorSet, string> = {
     ring: 'Ring',
 };
 
-function loadColors(): ThemeColors | null {
+// ---------------------------------------------------------------------------
+// Local cache helpers (fast startup + offline fallback)
+// ---------------------------------------------------------------------------
+
+export function loadColors(): ThemeColors | null {
     try {
         const stored = localStorage.getItem(STORAGE_KEY);
         if (stored) return JSON.parse(stored);
@@ -110,12 +123,30 @@ function loadColors(): ThemeColors | null {
     return null;
 }
 
-function applyColorsToDOM(colors: ThemeColors) {
+function cacheColors(colors: ThemeColors, recordId: string) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(colors));
+    localStorage.setItem(RECORD_ID_KEY, recordId);
+}
+
+function clearCache() {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(RECORD_ID_KEY);
+}
+
+function getCachedRecordId(): string | null {
+    return localStorage.getItem(RECORD_ID_KEY);
+}
+
+// ---------------------------------------------------------------------------
+// DOM manipulation
+// ---------------------------------------------------------------------------
+
+export function applyColorsToDOM(colors: ThemeColors) {
     const root = document.documentElement;
 
     // Apply light mode colors to :root
     for (const key of CSS_VARS) {
-        root.style.setProperty(`--color-${key}`, colors.light[key]);
+        root.style.setProperty(`--${key}`, colors.light[key]);
     }
 
     // Apply dark mode via a style tag
@@ -127,7 +158,7 @@ function applyColorsToDOM(colors: ThemeColors) {
     }
 
     const darkVars = CSS_VARS.map(
-        (key) => `  --color-${key}: ${colors.dark[key]};`
+        (key) => `  --${key}: ${colors.dark[key]};`
     ).join('\n');
 
     styleEl.textContent = `.dark {\n${darkVars}\n}`;
@@ -136,11 +167,84 @@ function applyColorsToDOM(colors: ThemeColors) {
 function removeCustomColors() {
     const root = document.documentElement;
     for (const key of CSS_VARS) {
-        root.style.removeProperty(`--color-${key}`);
+        root.style.removeProperty(`--${key}`);
     }
     const styleEl = document.getElementById('kb-custom-dark-theme');
     if (styleEl) styleEl.remove();
 }
+
+// ---------------------------------------------------------------------------
+// Backend API helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch theme colors from the backend.
+ * Returns the first matching record or null if none exists.
+ */
+export async function fetchColorsFromApi(): Promise<{
+    colors: ThemeColors;
+    recordId: string;
+} | null> {
+    try {
+        const records = await clientRecordsApi.list<ThemeColors>({
+            module_name: MODULE_NAME,
+            entity_type: ENTITY_TYPE,
+            limit: 1,
+        });
+        if (records.length > 0) {
+            const record = records[0];
+            // Update local cache so next cold-start is instant
+            cacheColors(record.data, record.id);
+            return { colors: record.data, recordId: record.id };
+        }
+    } catch (err) {
+        console.warn('[ThemeColors] Failed to fetch from API, falling back to cache', err);
+    }
+    return null;
+}
+
+async function saveColorsToApi(
+    colors: ThemeColors,
+): Promise<ClientRecord<ThemeColors>> {
+    const existingId = getCachedRecordId();
+
+    if (existingId) {
+        // Try to update existing record
+        try {
+            const updated = await clientRecordsApi.update<ThemeColors>(existingId, {
+                data: colors,
+            });
+            cacheColors(colors, updated.id);
+            return updated;
+        } catch {
+            // Record may have been deleted — fall through to create
+        }
+    }
+
+    // Create new record
+    const created = await clientRecordsApi.create<ThemeColors>({
+        module_name: MODULE_NAME,
+        entity_type: ENTITY_TYPE,
+        data: colors,
+    });
+    cacheColors(colors, created.id);
+    return created;
+}
+
+async function deleteColorsFromApi(): Promise<void> {
+    const recordId = getCachedRecordId();
+    if (recordId) {
+        try {
+            await clientRecordsApi.delete(recordId);
+        } catch {
+            // Ignore — record may already be gone
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Hook
+// ---------------------------------------------------------------------------
 
 export function useThemeColors() {
     const [colors, setColors] = useState<ThemeColors>(() => {
@@ -166,17 +270,32 @@ export function useThemeColors() {
         [],
     );
 
-    const saveColors = useCallback(() => {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(colors));
+    const saveColors = useCallback(async () => {
         applyColorsToDOM(colors);
         setHasCustom(true);
+
+        // Persist to backend (and update local cache)
+        try {
+            await saveColorsToApi(colors);
+        } catch (err) {
+            console.error('[ThemeColors] Failed to save to backend', err);
+            // Fall back to localStorage-only persistence
+            cacheColors(colors, getCachedRecordId() ?? '');
+        }
     }, [colors]);
 
-    const resetColors = useCallback(() => {
-        localStorage.removeItem(STORAGE_KEY);
+    const resetColors = useCallback(async () => {
         removeCustomColors();
         setColors(DEFAULT_COLORS);
         setHasCustom(false);
+
+        // Delete from backend and clear cache
+        try {
+            await deleteColorsFromApi();
+        } catch (err) {
+            console.error('[ThemeColors] Failed to delete from backend', err);
+        }
+        clearCache();
     }, []);
 
     return {

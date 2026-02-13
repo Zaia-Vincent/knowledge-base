@@ -1,0 +1,1218 @@
+# ══════════════════════════════════════════════════════════════════════
+# LAYER 2 — UNIVERSAL ENTERPRISE ONTOLOGY: ARTIFACTS
+# ══════════════════════════════════════════════════════════════════════
+# The Artifact Pillar answers "What is produced or consumed?"
+#
+# Extends L1 concepts: Document, DataRecord, Message.
+#
+# Documents are the primary target of metadata extraction. Each
+# concrete document type has an extraction_template that defines
+# classification hints and file patterns. The compiler merges
+# templates from all ancestors to produce the resolved template
+# used at runtime.
+# ══════════════════════════════════════════════════════════════════════
+
+layer:
+  id: L2
+  name: "Enterprise"
+  version: "2.3.0"
+  locked: true
+  namespace: "enterprise.artifacts"
+
+
+concepts:
+
+  # ════════════════════════════════════════════════════════════════════
+  # DOCUMENT SPECIALISATIONS
+  # ════════════════════════════════════════════════════════════════════
+
+  # ──────────────────────────────────────────────────────────────────
+  # Financial Documents
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "FinancialDocument"
+    layer: L2
+    inherits: "Document"
+    abstract: true
+    label: "FinancialDocument"
+    description: >
+      A document with financial significance. Abstract parent of all
+      financial document types. Adds monetary value tracking,
+      audit trail, and source mapping.
+    synonyms:
+      - "financial doc"
+      - "finance document"
+      - "financieel document"
+    mixins:
+      - "Auditable"
+      - "HasMonetaryValue"
+      - "SourceMapped"
+    properties:
+      - name: "document_number"
+        type: "string"
+        required: true
+        description: "Unique document number (invoice number, PO number, etc.)"
+      - name: "fiscal_year"
+        type: "string"
+        required: false
+        description: "Fiscal year this document belongs to"
+      - name: "cost_centre"
+        type: "string"
+        required: false
+        description: "Cost centre this document is charged to"
+      - name: "related_party"
+        type: "ref:Organisation"
+        required: false
+        description: "The external organisation related to this document"
+    relationships: []
+    extraction_template:
+      classification_hints:
+        - "financial"
+        - "finance"
+        - "fiscal"
+        - "financieel"
+      file_patterns:
+        - "**/finance/**"
+        - "**/financial/**"
+        - "**/financieel/**"
+
+  - id: "Invoice"
+    layer: L2
+    inherits: "FinancialDocument"
+    abstract: false
+    label: "Invoice"
+    description: >
+      A demand for payment for goods or services delivered. The most
+      commonly extracted document type in most organisations.
+    synonyms:
+      - "bill"
+      - "factuur"
+      - "Rechnung"
+      - "facture"
+      - "factura"
+      - "aankoopfactuur"
+    mixins: []
+    properties:
+      - name: "invoice_type"
+        type: "enum"
+        values: ["Standard", "Proforma", "Recurring", "SelfBilling", "Corrective"]
+        required: false
+        description: "Type of invoice"
+      - name: "due_date"
+        type: "date"
+        required: false
+        description: "Payment due date"
+      - name: "payment_terms"
+        type: "string"
+        required: false
+        description: "Payment terms (e.g., 'Net 30', '2/10 Net 30')"
+      - name: "vendor"
+        type: "ref:Vendor"
+        required: true
+        description: "The vendor that issued this invoice"
+      - name: "tax_amount"
+        type: "decimal"
+        required: false
+        description: "Total tax amount (VAT/BTW)"
+      - name: "tax_rate"
+        type: "decimal"
+        required: false
+        description: "Applicable tax rate as percentage"
+      - name: "subtotal"
+        type: "decimal"
+        required: false
+        description: "Amount before tax"
+      - name: "purchase_order_ref"
+        type: "ref:PurchaseOrder"
+        required: false
+        description: "Reference to the purchase order this invoice fulfils"
+      - name: "line_items"
+        type: "InvoiceLineItem[]"
+        required: false
+        description: "Individual line items on the invoice"
+      - name: "payment_status"
+        type: "enum"
+        values: ["Unpaid", "PartiallyPaid", "Paid", "Overdue", "Disputed", "WrittenOff"]
+        required: false
+        description: "Current payment status"
+    relationships:
+      - name: "paidVia"
+        target: "TransactionRecord"
+        cardinality: "0..*"
+        description: "Transaction records for payments against this invoice"
+      - name: "issuedBy"
+        target: "Organisation"
+        cardinality: "0..1"
+        description: "Organisation that issued this invoice"
+    extraction_template:
+      classification_hints:
+        - "invoice"
+        - "inv-"
+        - "factuur"
+        - "rechnung"
+        - "facture"
+      file_patterns:
+        - "**/invoices/**"
+        - "**/facturen/**"
+        - "**/accounts-payable/**"
+
+  - id: "CreditNote"
+    layer: L2
+    inherits: "FinancialDocument"
+    abstract: false
+    label: "CreditNote"
+    description: >
+      A document reducing the amount owed — issued for returns,
+      overcharges, or corrections.
+    synonyms:
+      - "credit memo"
+      - "creditnota"
+      - "Gutschrift"
+      - "avoir"
+    mixins: []
+    properties:
+      - name: "original_invoice"
+        type: "ref:Invoice"
+        required: false
+        description: "The invoice this credit note relates to"
+      - name: "credit_reason"
+        type: "enum"
+        values: ["Return", "Overcharge", "Correction", "Goodwill", "Other"]
+        required: false
+        description: "Reason for the credit note"
+    relationships: []
+    extraction_template:
+      classification_hints:
+        - "credit note"
+        - "credit memo"
+        - "creditnota"
+        - "gutschrift"
+        - "avoir"
+      file_patterns:
+        - "**/credit-notes/**"
+        - "**/creditnota/**"
+
+  - id: "Receipt"
+    layer: L2
+    inherits: "FinancialDocument"
+    abstract: false
+    label: "Receipt"
+    description: >
+      A proof of payment or acknowledgement of money received.
+    synonyms:
+      - "payment receipt"
+      - "kwitantie"
+      - "betalingsbewijs"
+      - "bon"
+    mixins: []
+    properties:
+      - name: "payment_method"
+        type: "enum"
+        values: ["BankTransfer", "Cash", "CreditCard", "DirectDebit", "Cheque", "Other"]
+        required: false
+        description: "How the payment was made"
+      - name: "related_invoice"
+        type: "ref:Invoice"
+        required: false
+        description: "Invoice this receipt settles"
+    relationships: []
+    extraction_template:
+      classification_hints:
+        - "receipt"
+        - "kwitantie"
+        - "bon"
+        - "betalingsbewijs"
+      file_patterns:
+        - "**/receipts/**"
+
+  - id: "Budget"
+    layer: L2
+    inherits: "FinancialDocument"
+    abstract: false
+    label: "Budget"
+    description: >
+      A financial plan for a defined period — a department budget,
+      project budget, or capital expenditure budget.
+    synonyms:
+      - "financial plan"
+      - "begroting"
+      - "budget"
+    mixins: []
+    properties:
+      - name: "budget_period"
+        type: "ref:TimePeriod"
+        required: false
+        description: "The time period this budget covers"
+      - name: "budget_type"
+        type: "enum"
+        values: ["Operating", "Capital", "Project", "Department", "Revenue"]
+        required: false
+        description: "Type of budget"
+      - name: "department"
+        type: "ref:Department"
+        required: false
+        description: "Department this budget belongs to"
+      - name: "actual_spend"
+        type: "decimal"
+        required: false
+        description: "Actual spend against this budget (running total)"
+    relationships: []
+    extraction_template:
+      classification_hints:
+        - "budget"
+        - "begroting"
+        - "financial plan"
+      file_patterns:
+        - "**/budgets/**"
+        - "**/begrotingen/**"
+
+  - id: "FinancialReport"
+    layer: L2
+    inherits: "FinancialDocument"
+    abstract: false
+    label: "FinancialReport"
+    description: >
+      A report summarising financial performance or position:
+      P&L, balance sheet, management accounts, variance report.
+    synonyms:
+      - "financial statement"
+      - "management accounts"
+      - "financieel verslag"
+      - "financieel rapport"
+    mixins: []
+    properties:
+      - name: "report_type"
+        type: "enum"
+        values: ["ProfitAndLoss", "BalanceSheet", "CashFlow", "VarianceReport", "ManagementAccounts", "Other"]
+        required: false
+        description: "Type of financial report"
+      - name: "reporting_period"
+        type: "ref:TimePeriod"
+        required: false
+        description: "Period this report covers"
+    relationships: []
+    extraction_template:
+      classification_hints:
+        - "financial report"
+        - "P&L"
+        - "balance sheet"
+        - "financieel verslag"
+        - "jaarrekening"
+      file_patterns:
+        - "**/financial-reports/**"
+        - "**/management-accounts/**"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # Legal Documents
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "LegalDocument"
+    layer: L2
+    inherits: "Document"
+    abstract: true
+    label: "LegalDocument"
+    description: >
+      A document with legal standing or regulatory significance.
+    synonyms:
+      - "legal doc"
+      - "juridisch document"
+    mixins:
+      - "Auditable"
+    properties:
+      - name: "effective_date"
+        type: "date"
+        required: false
+        description: "Date this document takes legal effect"
+      - name: "expiry_date"
+        type: "date"
+        required: false
+        description: "Date this document expires or needs renewal"
+      - name: "legal_status"
+        type: "enum"
+        values: ["Draft", "UnderReview", "Active", "Expired", "Terminated", "Superseded"]
+        required: false
+        description: "Current legal status"
+    relationships: []
+    extraction_template:
+      classification_hints:
+        - "legal"
+        - "juridisch"
+        - "contract"
+        - "agreement"
+      file_patterns:
+        - "**/legal/**"
+        - "**/contracts/**"
+        - "**/juridisch/**"
+
+  - id: "Contract"
+    layer: L2
+    inherits: "LegalDocument"
+    abstract: false
+    label: "Contract"
+    description: >
+      A legally binding agreement between two or more parties,
+      defining obligations, deliverables, and terms.
+    synonyms:
+      - "agreement"
+      - "overeenkomst"
+      - "contract"
+      - "Vertrag"
+      - "contrat"
+    mixins:
+      - "HasMonetaryValue"
+    properties:
+      - name: "contract_type"
+        type: "enum"
+        values: ["Service", "Supply", "NDA", "Employment", "Lease", "Framework", "Other"]
+        required: false
+        description: "Type of contract"
+      - name: "auto_renew"
+        type: "boolean"
+        required: false
+        description: "Whether the contract auto-renews"
+      - name: "notice_period_days"
+        type: "integer"
+        required: false
+        description: "Notice period for termination in days"
+    relationships:
+      - name: "governs"
+        target: "BusinessProcess"
+        cardinality: "0..*"
+        description: "Processes governed by this contract"
+      - name: "hasContractingParty"
+        target: "Organisation"
+        cardinality: "1..*"
+        description: "Organisations that are parties to this contract"
+    extraction_template:
+      classification_hints:
+        - "contract"
+        - "overeenkomst"
+        - "agreement"
+        - "Vertrag"
+      file_patterns:
+        - "**/contracts/**"
+        - "**/overeenkomsten/**"
+
+  - id: "Agreement"
+    layer: L2
+    inherits: "LegalDocument"
+    abstract: false
+    label: "Agreement"
+    description: >
+      A less formal agreement — a memorandum of understanding,
+      letter of intent, or service level agreement.
+    synonyms:
+      - "MOU"
+      - "memorandum"
+      - "letter of intent"
+      - "SLA"
+      - "afspraak"
+    mixins: []
+    properties:
+      - name: "agreement_type"
+        type: "enum"
+        values: ["MOU", "LOI", "SLA", "Partnership", "Other"]
+        required: false
+        description: "Type of agreement"
+    relationships: []
+    extraction_template:
+      classification_hints:
+        - "agreement"
+        - "MOU"
+        - "SLA"
+        - "letter of intent"
+      file_patterns:
+        - "**/agreements/**"
+
+  - id: "Policy"
+    layer: L2
+    inherits: "LegalDocument"
+    abstract: false
+    label: "Policy"
+    description: >
+      An internal policy document: code of conduct, procurement
+      policy, IT security policy, travel policy.
+    synonyms:
+      - "beleid"
+      - "beleidsdocument"
+      - "richtlijn"
+      - "guideline"
+    mixins: []
+    properties:
+      - name: "policy_domain"
+        type: "ref:BusinessDomain"
+        required: false
+        description: "Business domain this policy covers"
+      - name: "approved_by"
+        type: "ref:Person"
+        required: false
+        description: "Person who approved this policy"
+      - name: "review_frequency"
+        type: "enum"
+        values: ["Annual", "Biannual", "Quarterly", "OnChange"]
+        required: false
+        description: "How often this policy must be reviewed"
+    relationships:
+      - name: "governs"
+        target: "BusinessProcess"
+        cardinality: "0..*"
+        description: "Processes governed by this policy"
+    extraction_template:
+      classification_hints:
+        - "policy"
+        - "beleid"
+        - "richtlijn"
+        - "guideline"
+      file_patterns:
+        - "**/policies/**"
+        - "**/beleid/**"
+
+  - id: "Regulation"
+    layer: L2
+    inherits: "LegalDocument"
+    abstract: false
+    label: "Regulation"
+    description: >
+      An external regulation, law, or standard that the organisation
+      must comply with. Published by a regulatory body.
+    synonyms:
+      - "law"
+      - "standard"
+      - "regelgeving"
+      - "wet"
+      - "norm"
+    mixins: []
+    properties:
+      - name: "issuing_body"
+        type: "ref:RegulatoryBody"
+        required: false
+        description: "The authority that issued this regulation"
+      - name: "jurisdiction"
+        type: "string"
+        required: false
+        description: "Geographic or sectoral jurisdiction"
+      - name: "regulation_reference"
+        type: "string"
+        required: false
+        description: "Official reference number (e.g., 'GDPR', 'ISO 9001', 'SOX')"
+    relationships: []
+    extraction_template:
+      classification_hints:
+        - "regulation"
+        - "regelgeving"
+        - "compliance"
+        - "ISO"
+      file_patterns:
+        - "**/regulations/**"
+        - "**/compliance/**"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # Operational Documents
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "OperationalDocument"
+    layer: L2
+    inherits: "Document"
+    abstract: true
+    label: "OperationalDocument"
+    description: >
+      A document used in day-to-day operations: purchase orders,
+      work orders, specifications, and reports.
+    synonyms:
+      - "operational doc"
+      - "operationeel document"
+    mixins:
+      - "Classifiable"
+    properties: []
+    relationships: []
+    extraction_template:
+      classification_hints:
+        - "order"
+        - "work order"
+        - "specification"
+      file_patterns:
+        - "**/operations/**"
+
+  - id: "PurchaseOrder"
+    layer: L2
+    inherits: "OperationalDocument"
+    abstract: false
+    label: "PurchaseOrder"
+    description: >
+      A formal request to a vendor to supply goods or services at
+      an agreed price. Creates a contractual obligation when accepted.
+    synonyms:
+      - "PO"
+      - "purchase requisition"
+      - "bestelling"
+      - "inkooporder"
+      - "Bestellung"
+    mixins:
+      - "HasMonetaryValue"
+      - "SourceMapped"
+    properties:
+      - name: "po_number"
+        type: "string"
+        required: true
+        description: "Purchase order number"
+      - name: "vendor"
+        type: "ref:Vendor"
+        required: false
+        description: "Vendor this order is placed with"
+      - name: "order_date"
+        type: "date"
+        required: false
+        description: "Date the order was placed"
+      - name: "expected_delivery"
+        type: "date"
+        required: false
+        description: "Expected delivery date"
+      - name: "delivery_address"
+        type: "ref:Facility"
+        required: false
+        description: "Facility where goods should be delivered"
+      - name: "approval_status"
+        type: "enum"
+        values: ["Draft", "PendingApproval", "Approved", "Rejected", "Sent", "Acknowledged"]
+        required: false
+        description: "Current approval status"
+    relationships:
+      - name: "fulfilledBy"
+        target: "Invoice"
+        cardinality: "0..*"
+        description: "Invoices that fulfil this purchase order"
+      - name: "ordersProduct"
+        target: "Product"
+        cardinality: "0..*"
+        description: "Products ordered via this purchase order"
+    extraction_template:
+      classification_hints:
+        - "purchase order"
+        - "PO"
+        - "bestelling"
+        - "inkooporder"
+      file_patterns:
+        - "**/purchase-orders/**"
+        - "**/bestellingen/**"
+
+  - id: "SalesOrder"
+    layer: L2
+    inherits: "OperationalDocument"
+    abstract: false
+    label: "SalesOrder"
+    description: >
+      A confirmed order from a customer for goods or services.
+      The mirror of a PurchaseOrder from the customer's perspective.
+    synonyms:
+      - "SO"
+      - "customer order"
+      - "verkooporder"
+      - "klantorder"
+    mixins:
+      - "HasMonetaryValue"
+      - "SourceMapped"
+    properties:
+      - name: "so_number"
+        type: "string"
+        required: true
+        description: "Sales order number"
+      - name: "customer"
+        type: "ref:Client"
+        required: false
+        description: "Customer organisation that placed the order"
+      - name: "order_date"
+        type: "date"
+        required: false
+        description: "Date the order was received"
+      - name: "requested_delivery"
+        type: "date"
+        required: false
+        description: "Customer-requested delivery date"
+      - name: "fulfilment_status"
+        type: "enum"
+        values: ["Open", "InProgress", "PartiallyShipped", "Shipped", "Delivered", "Cancelled"]
+        required: false
+        description: "Current fulfilment status"
+    relationships: []
+    extraction_template:
+      classification_hints:
+        - "sales order"
+        - "SO"
+        - "verkooporder"
+        - "customer order"
+      file_patterns:
+        - "**/sales-orders/**"
+        - "**/verkooporders/**"
+
+  - id: "WorkOrder"
+    layer: L2
+    inherits: "OperationalDocument"
+    abstract: false
+    label: "WorkOrder"
+    description: >
+      An instruction to perform work: maintenance, repair,
+      installation, or any defined task.
+    synonyms:
+      - "WO"
+      - "werkorder"
+      - "werkopdracht"
+      - "maintenance order"
+    mixins: []
+    properties:
+      - name: "wo_number"
+        type: "string"
+        required: true
+        description: "Work order number"
+      - name: "work_type"
+        type: "enum"
+        values: ["Maintenance", "Repair", "Installation", "Inspection", "Calibration", "Other"]
+        required: false
+        description: "Type of work"
+      - name: "assigned_to"
+        type: "ref:Person"
+        required: false
+        description: "Person assigned to execute this work order"
+      - name: "priority"
+        type: "enum"
+        values: ["Low", "Medium", "High", "Critical"]
+        required: false
+        description: "Priority level"
+      - name: "scheduled_date"
+        type: "date"
+        required: false
+        description: "Scheduled date for the work"
+      - name: "completion_date"
+        type: "date"
+        required: false
+        description: "Actual completion date"
+    relationships: []
+    extraction_template:
+      classification_hints:
+        - "work order"
+        - "WO"
+        - "werkorder"
+        - "maintenance order"
+      file_patterns:
+        - "**/work-orders/**"
+        - "**/werkorders/**"
+
+  - id: "Specification"
+    layer: L2
+    inherits: "OperationalDocument"
+    abstract: false
+    label: "Specification"
+    description: >
+      A technical specification, requirements document, or
+      design specification.
+    synonyms:
+      - "spec"
+      - "technical spec"
+      - "specificatie"
+      - "requirements"
+    mixins: []
+    properties:
+      - name: "spec_type"
+        type: "enum"
+        values: ["Technical", "Functional", "Design", "Material", "Performance"]
+        required: false
+        description: "Type of specification"
+      - name: "revision"
+        type: "string"
+        required: false
+        description: "Document revision (e.g., 'Rev. C')"
+      - name: "approved_by"
+        type: "ref:Person"
+        required: false
+        description: "Person who approved this specification"
+    relationships: []
+    extraction_template:
+      classification_hints:
+        - "specification"
+        - "spec"
+        - "specificatie"
+        - "requirements"
+      file_patterns:
+        - "**/specifications/**"
+        - "**/specs/**"
+
+  - id: "Report"
+    layer: L2
+    inherits: "OperationalDocument"
+    abstract: false
+    label: "Report"
+    description: >
+      A general-purpose operational report — status reports,
+      progress reports, analysis reports. For financial reports,
+      see FinancialReport.
+    synonyms:
+      - "rapport"
+      - "verslag"
+      - "status report"
+    mixins: []
+    properties:
+      - name: "report_type"
+        type: "enum"
+        values: ["Status", "Progress", "Analysis", "Incident", "Summary", "Other"]
+        required: false
+        description: "Type of report"
+      - name: "reporting_period"
+        type: "ref:TimePeriod"
+        required: false
+        description: "Period this report covers"
+      - name: "prepared_by"
+        type: "ref:Person"
+        required: false
+        description: "Person who prepared this report"
+    relationships: []
+    extraction_template:
+      classification_hints:
+        - "report"
+        - "rapport"
+        - "verslag"
+      file_patterns:
+        - "**/reports/**"
+        - "**/rapporten/**"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # HR Documents
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "HRDocument"
+    layer: L2
+    inherits: "Document"
+    abstract: true
+    label: "HRDocument"
+    description: >
+      A document related to human resources: job descriptions,
+      performance reviews, leave requests, pay slips.
+    synonyms:
+      - "HR doc"
+      - "personeelsdocument"
+      - "HR document"
+    mixins:
+      - "Auditable"
+    properties:
+      - name: "employee"
+        type: "ref:Employee"
+        required: false
+        description: "Employee this document relates to"
+      - name: "confidentiality"
+        type: "enum"
+        values: ["Standard", "Confidential", "Restricted"]
+        required: false
+        description: "Confidentiality level"
+    relationships: []
+    extraction_template:
+      classification_hints:
+        - "HR"
+        - "human resources"
+        - "personnel"
+        - "personeel"
+      file_patterns:
+        - "**/hr/**"
+        - "**/human-resources/**"
+        - "**/personeel/**"
+
+  - id: "JobDescription"
+    layer: L2
+    inherits: "HRDocument"
+    abstract: false
+    label: "JobDescription"
+    description: "A description of a job role's responsibilities, requirements, and qualifications."
+    synonyms: ["JD", "functieomschrijving", "vacature", "job posting"]
+    mixins: []
+    properties:
+      - name: "role"
+        type: "ref:JobRole"
+        required: false
+        description: "The job role this description defines"
+      - name: "department"
+        type: "ref:Department"
+        required: false
+        description: "Department the role belongs to"
+      - name: "seniority_level"
+        type: "enum"
+        values: ["Junior", "Medior", "Senior", "Lead", "Manager", "Director", "Executive"]
+        required: false
+        description: "Seniority level"
+    relationships: []
+    extraction_template:
+      classification_hints: ["job description", "JD", "functieomschrijving", "vacature"]
+      file_patterns: ["**/job-descriptions/**"]
+
+  - id: "PerformanceReview"
+    layer: L2
+    inherits: "HRDocument"
+    abstract: false
+    label: "PerformanceReview"
+    description: "A periodic performance evaluation of an employee."
+    synonyms: ["performance evaluation", "beoordeling", "functioneringsgesprek", "evaluatie"]
+    mixins: []
+    properties:
+      - name: "review_period"
+        type: "ref:TimePeriod"
+        required: false
+        description: "Period being reviewed"
+      - name: "reviewer"
+        type: "ref:Person"
+        required: false
+        description: "Person conducting the review"
+      - name: "overall_rating"
+        type: "enum"
+        values: ["ExceedsExpectations", "MeetsExpectations", "NeedsImprovement", "Unsatisfactory"]
+        required: false
+        description: "Overall performance rating"
+    relationships: []
+    extraction_template:
+      classification_hints: ["performance review", "evaluation", "beoordeling"]
+      file_patterns: ["**/performance-reviews/**"]
+
+  - id: "LeaveRequest"
+    layer: L2
+    inherits: "HRDocument"
+    abstract: false
+    label: "LeaveRequest"
+    description: "A request for leave or time off."
+    synonyms: ["leave form", "verlofaanvraag", "vakantieaanvraag", "absence request"]
+    mixins: []
+    properties:
+      - name: "leave_type"
+        type: "enum"
+        values: ["Annual", "Sick", "Parental", "Unpaid", "Bereavement", "Study", "Other"]
+        required: false
+        description: "Type of leave"
+      - name: "start_date"
+        type: "date"
+        required: false
+        description: "First day of leave"
+      - name: "end_date"
+        type: "date"
+        required: false
+        description: "Last day of leave"
+      - name: "approved_by"
+        type: "ref:Person"
+        required: false
+        description: "Manager who approved the leave"
+    relationships: []
+    extraction_template:
+      classification_hints: ["leave request", "verlofaanvraag", "absence"]
+      file_patterns: ["**/leave-requests/**"]
+
+  - id: "PaySlip"
+    layer: L2
+    inherits: "HRDocument"
+    abstract: false
+    label: "PaySlip"
+    description: "A document detailing an employee's pay for a period."
+    synonyms: ["paycheck", "loonstrook", "loonbrief", "salary slip"]
+    mixins:
+      - "HasMonetaryValue"
+    properties:
+      - name: "pay_period"
+        type: "ref:TimePeriod"
+        required: false
+        description: "Pay period this slip covers"
+      - name: "gross_amount"
+        type: "decimal"
+        required: false
+        description: "Gross salary for this period"
+      - name: "net_amount"
+        type: "decimal"
+        required: false
+        description: "Net salary for this period"
+      - name: "deductions"
+        type: "decimal"
+        required: false
+        description: "Total deductions"
+    relationships: []
+    extraction_template:
+      classification_hints: ["pay slip", "payslip", "loonstrook", "loonbrief", "salary"]
+      file_patterns: ["**/payslips/**", "**/loonstroken/**"]
+
+
+  # ════════════════════════════════════════════════════════════════════
+  # DATARECORD SPECIALISATIONS
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: "TransactionRecord"
+    layer: L2
+    inherits: "DataRecord"
+    abstract: false
+    label: "TransactionRecord"
+    description: >
+      A record of a financial or operational transaction — a payment,
+      a journal entry, a stock movement.
+    synonyms:
+      - "transaction"
+      - "transactierecord"
+      - "boeking"
+    mixins:
+      - "HasMonetaryValue"
+      - "SourceMapped"
+    properties:
+      - name: "transaction_type"
+        type: "enum"
+        values: ["Payment", "JournalEntry", "StockMovement", "Adjustment", "Transfer"]
+        required: false
+        description: "Type of transaction"
+      - name: "transaction_date"
+        type: "datetime"
+        required: false
+        description: "When the transaction occurred"
+      - name: "reference"
+        type: "string"
+        required: false
+        description: "External or internal reference number"
+    relationships: []
+
+  - id: "MasterDataRecord"
+    layer: L2
+    inherits: "DataRecord"
+    abstract: false
+    label: "MasterDataRecord"
+    description: >
+      A reference data record: a customer master, vendor master,
+      material master, or chart of accounts entry.
+    synonyms:
+      - "master record"
+      - "stamgegevens"
+      - "reference data"
+    mixins:
+      - "SourceMapped"
+    properties:
+      - name: "master_type"
+        type: "enum"
+        values: ["Customer", "Vendor", "Material", "GLAccount", "CostCentre", "Employee", "Other"]
+        required: false
+        description: "Type of master data"
+      - name: "active"
+        type: "boolean"
+        required: false
+        default: true
+        description: "Whether this master record is currently active"
+    relationships: []
+
+  - id: "LogEntry"
+    layer: L2
+    inherits: "DataRecord"
+    abstract: false
+    label: "LogEntry"
+    description: >
+      A system or application log entry — audit logs, access logs,
+      change logs, error logs.
+    synonyms:
+      - "log"
+      - "logboek"
+      - "systeemlog"
+    mixins: []
+    properties:
+      - name: "log_level"
+        type: "enum"
+        values: ["Debug", "Info", "Warning", "Error", "Critical"]
+        required: false
+        description: "Severity level"
+      - name: "log_source"
+        type: "string"
+        required: false
+        description: "System or component that generated this log entry"
+      - name: "user"
+        type: "ref:Person"
+        required: false
+        description: "User associated with this log entry"
+    relationships: []
+
+  - id: "MeasurementRecord"
+    layer: L2
+    inherits: "DataRecord"
+    abstract: false
+    label: "MeasurementRecord"
+    description: >
+      A recorded measurement or sensor reading: temperature,
+      pressure, weight, cycle time, energy consumption.
+    synonyms:
+      - "measurement"
+      - "reading"
+      - "meting"
+      - "meetwaarde"
+    mixins: []
+    properties:
+      - name: "measured_value"
+        type: "decimal"
+        required: true
+        description: "The measured numeric value"
+      - name: "unit"
+        type: "string"
+        required: false
+        description: "Unit of measurement"
+      - name: "measured_at"
+        type: "datetime"
+        required: false
+        description: "When the measurement was taken"
+      - name: "measured_by"
+        type: "string"
+        required: false
+        description: "Instrument, sensor, or person that took the measurement"
+      - name: "tolerance_min"
+        type: "decimal"
+        required: false
+        description: "Lower tolerance bound"
+      - name: "tolerance_max"
+        type: "decimal"
+        required: false
+        description: "Upper tolerance bound"
+      - name: "in_tolerance"
+        type: "boolean"
+        required: false
+        description: "Whether the measurement falls within tolerance"
+    relationships: []
+
+
+  # ════════════════════════════════════════════════════════════════════
+  # MESSAGE SPECIALISATIONS
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: "Email"
+    layer: L2
+    inherits: "Message"
+    abstract: false
+    label: "Email"
+    description: "An email message."
+    synonyms: ["e-mail", "mail", "electronic mail"]
+    mixins:
+      - "SourceMapped"
+    properties:
+      - name: "cc"
+        type: "ref:Actor[]"
+        required: false
+        description: "CC recipients"
+      - name: "bcc"
+        type: "ref:Actor[]"
+        required: false
+        description: "BCC recipients"
+      - name: "has_attachments"
+        type: "boolean"
+        required: false
+        description: "Whether this email has attachments"
+      - name: "thread_id"
+        type: "string"
+        required: false
+        description: "Email thread/conversation identifier"
+    relationships: []
+
+  - id: "Ticket"
+    layer: L2
+    inherits: "Message"
+    abstract: false
+    label: "Ticket"
+    description: >
+      A support or service ticket: IT helpdesk, customer support,
+      maintenance request.
+    synonyms: ["support ticket", "helpdesk ticket", "melding", "serviceverzoek"]
+    mixins:
+      - "Classifiable"
+    properties:
+      - name: "ticket_number"
+        type: "string"
+        required: true
+        description: "Unique ticket number"
+      - name: "ticket_type"
+        type: "enum"
+        values: ["Incident", "ServiceRequest", "Problem", "Change", "Bug"]
+        required: false
+        description: "Type of ticket (ITIL-aligned)"
+      - name: "assigned_to"
+        type: "ref:Person"
+        required: false
+        description: "Person assigned to resolve this ticket"
+      - name: "resolution"
+        type: "string"
+        required: false
+        description: "Resolution description"
+      - name: "resolved_at"
+        type: "datetime"
+        required: false
+        description: "When the ticket was resolved"
+    relationships: []
+
+  - id: "Notification"
+    layer: L2
+    inherits: "Message"
+    abstract: false
+    label: "Notification"
+    description: >
+      An automated system notification: alerts, reminders,
+      threshold breaches, workflow notifications.
+    synonyms: ["alert", "reminder", "melding", "waarschuwing"]
+    mixins: []
+    properties:
+      - name: "notification_type"
+        type: "enum"
+        values: ["Alert", "Reminder", "Threshold", "Workflow", "System"]
+        required: false
+        description: "Type of notification"
+      - name: "triggered_by"
+        type: "string"
+        required: false
+        description: "Rule or event that triggered this notification"
+      - name: "acknowledged"
+        type: "boolean"
+        required: false
+        description: "Whether the recipient acknowledged this notification"
+    relationships: []
+
+  - id: "ChatMessage"
+    layer: L2
+    inherits: "Message"
+    abstract: false
+    label: "ChatMessage"
+    description: >
+      A message from a chat or instant messaging platform
+      (Teams, Slack, etc.).
+    synonyms: ["chat", "IM", "instant message", "chatbericht"]
+    mixins: []
+    properties:
+      - name: "channel"
+        type: "string"
+        required: false
+        description: "Chat channel or conversation name"
+      - name: "platform"
+        type: "string"
+        required: false
+        description: "Messaging platform (Teams, Slack, etc.)"
+    relationships: []
+
+
+# ══════════════════════════════════════════════════════════════════════
+# EMBEDDED TYPES — Artifact-specific value types
+# ══════════════════════════════════════════════════════════════════════
+
+embedded_types:
+
+  - id: "InvoiceLineItem"
+    description: "A single line item on an invoice"
+    properties:
+      - name: "line_number"
+        type: "integer"
+        required: true
+      - name: "description"
+        type: "string"
+        required: true
+      - name: "quantity"
+        type: "decimal"
+        required: false
+      - name: "unit_price"
+        type: "decimal"
+        required: false
+      - name: "line_total"
+        type: "decimal"
+        required: false
+      - name: "product"
+        type: "ref:Product"
+        required: false
+        description: "Product referenced by this line item"
+      - name: "tax_rate"
+        type: "decimal"
+        required: false

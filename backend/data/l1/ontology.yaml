@@ -1,0 +1,95 @@
+# ══════════════════════════════════════════════════════════════════════
+# ONTOLOGY MANIFEST
+# ══════════════════════════════════════════════════════════════════════
+# Master file for the Layered Ontology Architecture (v3.2).
+# This file declares all layers and their source files.
+# The ontology loader reads this first, then loads each layer in order.
+#
+# Design reference: ontology-layered-design-v3.2.md
+# ══════════════════════════════════════════════════════════════════════
+
+ontology:
+  name: "AcmeTech Ontology"
+  version: "1.0.0"
+  description: >
+    Layered enterprise ontology for AcmeTech Manufacturing BV.
+    Built on the four-layer architecture: Foundation → Enterprise →
+    Branch (Manufacturing) → Organisation.
+
+  # ─── Layer definitions ───────────────────────────────────────────
+  # Layers are loaded in order. Each layer may only extend or
+  # specialise concepts from the same or higher layer — never upward.
+  layers:
+    - id: L1
+      name: "Foundation"
+      version: "1.0.0"
+      locked: true
+      sources:
+        - "foundation/foundation.yaml"
+        - "foundation/mixins.yaml"
+      description: >
+        The grammar of the ontology. Abstract, domain-neutral categories
+        that everything else specialises from. Inspired by BFO/CCO but
+        using plain-language names. Should almost never change.
+
+    - id: L2
+      name: "Enterprise"
+      version: "2.3.0"
+      locked: true
+      sources:
+        - "enterprise/entities.yaml"
+        - "enterprise/processes.yaml"
+        - "enterprise/artifacts.yaml"
+        - "enterprise/domain-knowledge.yaml"
+      description: >
+        Universal business concepts common to virtually every organisation,
+        regardless of industry. The workhorse layer — most queries resolve
+        to concepts defined here.
+
+    - id: L3
+      name: "Manufacturing"
+      version: "1.1.0"
+      locked: false
+      sources:
+        - "branches/manufacturing/manufacturing.yaml"
+      description: >
+        Manufacturing-specific specialisations: production processes,
+        bill of materials, quality control, supply chain, maintenance.
+        Based on IOF Core and industry standards.
+
+    - id: L4
+      name: "AcmeTech"
+      version: "3.7.2"
+      locked: false
+      sources:
+        - "organisation/acmetech.yaml"
+      description: >
+        AcmeTech Manufacturing BV's unique vocabulary, processes,
+        document types, and system mappings.
+
+  # ─── Loader configuration ────────────────────────────────────────
+  loader:
+    # Order matters: layers are loaded L1 → L2 → L3 → L4.
+    # Inheritance chains are resolved after all layers are loaded.
+    resolve_order: [L1, L2, L3, L4]
+
+    # Validation rules applied after loading.
+    validation:
+      - rule: "no_orphan_references"
+        description: "Every inherits, ref:, and relationship target must resolve to a known concept."
+      - rule: "no_upward_inheritance"
+        description: "A concept in layer N may only inherit from layer N or higher."
+      - rule: "no_property_removal"
+        description: "A child may not remove an inherited property."
+      - rule: "no_constraint_weakening"
+        description: "If a property is required in a parent, it cannot be optional in a child."
+      - rule: "no_type_mismatch"
+        description: "A child's property type must be compatible with the parent's."
+      - rule: "synonym_collision_warning"
+        description: "Warn if the same synonym maps to two different concepts."
+
+  # ─── Governance ──────────────────────────────────────────────────
+  governance:
+    L1_L2_changes: "Require PR + Ontology Owner approval"
+    L3_changes: "Require PR + Domain Steward approval"
+    L4_changes: "Require PR + Data Steward approval"

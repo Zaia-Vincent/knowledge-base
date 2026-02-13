@@ -1,0 +1,1024 @@
+# ══════════════════════════════════════════════════════════════════════
+# LAYER 2 — UNIVERSAL ENTERPRISE ONTOLOGY: ENTITIES
+# ══════════════════════════════════════════════════════════════════════
+# The Entity Pillar answers "Who is involved?" and "What things exist?"
+#
+# Organised into three branches under Entity (L1):
+#   Actor   — people and organisations that can act intentionally
+#   Object  — physical/tangible things that do not act
+#   Place   — spatial regions (specialisations of L1 Place)
+#
+# Plus Role specialisations (from L1 Role, under Characteristic).
+#
+# Design principle: Actor and Object are SIBLINGS, not parent-child.
+# A query for "all Actors" returns people and organisations but
+# never products, assets, or facilities.
+# ══════════════════════════════════════════════════════════════════════
+
+layer:
+  id: L2
+  name: "Enterprise"
+  version: "2.3.0"
+  locked: true
+  namespace: "enterprise.entities"
+
+
+concepts:
+
+  # ════════════════════════════════════════════════════════════════════
+  # ACTOR BRANCH — Who can act
+  # ════════════════════════════════════════════════════════════════════
+
+  # ──────────────────────────────────────────────────────────────────
+  # Person and specialisations
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "Person"
+    layer: L2
+    inherits: "Actor"
+    abstract: false
+    label: "Person"
+    description: >
+      An individual human being. The base concept for all people
+      the organisation interacts with: employees, customers,
+      supplier contacts, and external stakeholders.
+    synonyms:
+      - "individual"
+      - "contact"
+      - "persoon"
+      - "contactpersoon"
+    mixins:
+      - "Trackable"
+      - "Locatable"
+    properties:
+      - name: "given_name"
+        type: "string"
+        required: true
+        description: "First name / given name"
+      - name: "family_name"
+        type: "string"
+        required: true
+        description: "Last name / surname / family name"
+      - name: "email"
+        type: "string"
+        required: false
+        description: "Primary email address"
+      - name: "phone"
+        type: "string"
+        required: false
+        description: "Primary phone number"
+      - name: "job_title"
+        type: "string"
+        required: false
+        description: "Current job title or position"
+      - name: "department"
+        type: "ref:Department"
+        required: false
+        description: "The department this person belongs to"
+      - name: "reports_to"
+        type: "ref:Person"
+        required: false
+        description: "Direct manager / supervisor"
+    relationships:
+      - name: "holdsRole"
+        target: "Role"
+        cardinality: "0..*"
+        description: "Roles this person holds in various contexts"
+
+  - id: "Employee"
+    layer: L2
+    inherits: "Person"
+    abstract: false
+    label: "Employee"
+    description: >
+      A person employed by the organisation, whether full-time,
+      part-time, contractor, or temporary.
+    synonyms:
+      - "staff"
+      - "staff member"
+      - "medewerker"
+      - "werknemer"
+      - "personeelslid"
+    mixins: []
+    properties:
+      - name: "employee_id"
+        type: "string"
+        required: true
+        description: "Internal employee identifier"
+      - name: "hire_date"
+        type: "date"
+        required: false
+        description: "Date the employee started"
+      - name: "employment_type"
+        type: "enum"
+        values: ["FullTime", "PartTime", "Contractor", "Temporary"]
+        required: false
+        description: "Type of employment arrangement"
+      - name: "cost_centre"
+        type: "string"
+        required: false
+        description: "Cost centre this employee is charged to"
+      - name: "termination_date"
+        type: "date"
+        required: false
+        description: "Date the employee left (null if still active)"
+    relationships: []
+
+  - id: "Customer"
+    layer: L2
+    inherits: "Person"
+    abstract: false
+    label: "Customer"
+    description: >
+      A person who purchases goods or services from the organisation,
+      as an individual (B2C). For organisational customers, see Client.
+    synonyms:
+      - "buyer"
+      - "klant"
+      - "afnemer"
+      - "end user"
+    mixins: []
+    properties:
+      - name: "customer_id"
+        type: "string"
+        required: false
+        description: "External customer identifier"
+      - name: "customer_since"
+        type: "date"
+        required: false
+        description: "Date this person became a customer"
+    relationships: []
+
+  - id: "SupplierContact"
+    layer: L2
+    inherits: "Person"
+    abstract: false
+    label: "SupplierContact"
+    description: >
+      A contact person at a supplier or vendor organisation.
+      Links to the Vendor organisation via the employer relationship.
+    synonyms:
+      - "vendor contact"
+      - "supplier rep"
+      - "leverancierscontact"
+    mixins: []
+    properties:
+      - name: "employer"
+        type: "ref:Vendor"
+        required: false
+        description: "The vendor organisation this contact works for"
+      - name: "contact_role"
+        type: "string"
+        required: false
+        description: "Role at the vendor (e.g., 'Account Manager', 'Technical Support')"
+    relationships: []
+
+  - id: "ExternalStakeholder"
+    layer: L2
+    inherits: "Person"
+    abstract: false
+    label: "ExternalStakeholder"
+    description: >
+      A person outside the organisation who has a stake in its
+      activities: auditors, regulators, consultants, board members.
+    synonyms:
+      - "stakeholder"
+      - "externe betrokkene"
+      - "advisor"
+    mixins: []
+    properties:
+      - name: "stakeholder_type"
+        type: "enum"
+        values: ["Auditor", "Regulator", "Consultant", "BoardMember", "Investor", "Other"]
+        required: false
+        description: "Type of external stakeholder"
+      - name: "affiliated_with"
+        type: "ref:ExternalOrganisation"
+        required: false
+        description: "Organisation this stakeholder is affiliated with"
+    relationships: []
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # Organisation and specialisations
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "Organisation"
+    layer: L2
+    inherits: "Actor"
+    abstract: false
+    label: "Organisation"
+    description: >
+      A structured group of people with a shared purpose. Organisations
+      are Actors — they can sign contracts, make decisions, employ
+      people, and bear legal responsibility.
+    synonyms:
+      - "company"
+      - "firm"
+      - "enterprise"
+      - "organisatie"
+      - "bedrijf"
+      - "onderneming"
+    mixins:
+      - "Trackable"
+      - "Locatable"
+    properties:
+      - name: "legal_name"
+        type: "string"
+        required: true
+        description: "Full legal name of the organisation"
+      - name: "trade_name"
+        type: "string"
+        required: false
+        description: "Trading name / commercial name (if different from legal name)"
+      - name: "registration_number"
+        type: "string"
+        required: false
+        description: "Company registration number (e.g., KvK, Companies House)"
+      - name: "vat_number"
+        type: "string"
+        required: false
+        description: "VAT / tax identification number"
+      - name: "website"
+        type: "url"
+        required: false
+        description: "Primary website URL"
+      - name: "industry"
+        type: "string"
+        required: false
+        description: "Primary industry or sector"
+      - name: "founded_date"
+        type: "date"
+        required: false
+        description: "Date the organisation was founded or incorporated"
+    relationships:
+      - name: "employs"
+        target: "Person"
+        cardinality: "0..*"
+        inverse: "employedBy"
+        description: "People employed by this organisation"
+      - name: "hasDepartment"
+        target: "Department"
+        cardinality: "0..*"
+        description: "Departments within this organisation"
+
+  - id: "InternalOrganisation"
+    layer: L2
+    inherits: "Organisation"
+    abstract: false
+    label: "InternalOrganisation"
+    description: >
+      A division, department, team, or unit within the organisation
+      itself. Internal organisations share the parent organisation's
+      legal identity.
+    synonyms:
+      - "internal unit"
+      - "interne organisatie"
+      - "interne afdeling"
+    mixins: []
+    properties:
+      - name: "parent_organisation"
+        type: "ref:Organisation"
+        required: false
+        description: "The organisation this internal unit belongs to"
+    relationships: []
+
+  - id: "Department"
+    layer: L2
+    inherits: "InternalOrganisation"
+    abstract: false
+    label: "Department"
+    description: >
+      A functional department within the organisation (Finance, HR,
+      Engineering, Procurement, etc.).
+    synonyms:
+      - "division"
+      - "afdeling"
+      - "dienst"
+    mixins: []
+    properties:
+      - name: "department_code"
+        type: "string"
+        required: false
+        description: "Internal department code"
+      - name: "head_of_department"
+        type: "ref:Person"
+        required: false
+        description: "The person leading this department"
+    relationships: []
+
+  - id: "Team"
+    layer: L2
+    inherits: "InternalOrganisation"
+    abstract: false
+    label: "Team"
+    description: >
+      A working team, squad, or crew. Typically smaller and more
+      fluid than a department.
+    synonyms:
+      - "squad"
+      - "crew"
+      - "werkgroep"
+      - "team"
+    mixins: []
+    properties:
+      - name: "team_lead"
+        type: "ref:Person"
+        required: false
+        description: "Team lead or manager"
+      - name: "member_count"
+        type: "integer"
+        required: false
+        description: "Current number of team members"
+    relationships: []
+
+  - id: "BusinessUnit"
+    layer: L2
+    inherits: "InternalOrganisation"
+    abstract: false
+    label: "BusinessUnit"
+    description: >
+      A semi-autonomous business unit, often with its own P&L
+      responsibility. Larger than a department.
+    synonyms:
+      - "BU"
+      - "business division"
+      - "bedrijfsonderdeel"
+    mixins:
+      - "HasMonetaryValue"    # BUs have revenue/budget
+    properties:
+      - name: "bu_code"
+        type: "string"
+        required: false
+        description: "Business unit code"
+      - name: "general_manager"
+        type: "ref:Person"
+        required: false
+        description: "General manager of this business unit"
+    relationships: []
+
+  - id: "ExternalOrganisation"
+    layer: L2
+    inherits: "Organisation"
+    abstract: false
+    label: "ExternalOrganisation"
+    description: >
+      An organisation external to ours — a vendor, client, partner,
+      regulatory body, or other third party.
+    synonyms:
+      - "external party"
+      - "third party"
+      - "externe organisatie"
+      - "externe partij"
+    mixins: []
+    properties:
+      - name: "relationship_type"
+        type: "enum"
+        values: ["Vendor", "Client", "Partner", "Regulator", "Other"]
+        required: false
+        description: "Primary relationship type with our organisation"
+      - name: "relationship_since"
+        type: "date"
+        required: false
+        description: "When the relationship with this organisation started"
+    relationships: []
+
+  - id: "Vendor"
+    layer: L2
+    inherits: "ExternalOrganisation"
+    abstract: false
+    label: "Vendor"
+    description: >
+      A supplier of goods or services. Vendors have payment terms,
+      approval status, and ratings.
+    synonyms:
+      - "supplier"
+      - "leverancier"
+      - "toeleverancier"
+    mixins: []
+    properties:
+      - name: "vendor_id"
+        type: "string"
+        required: true
+        description: "Internal vendor identifier"
+      - name: "payment_terms"
+        type: "string"
+        required: false
+        description: "Agreed payment terms (e.g., 'Net 30', '2/10 Net 30')"
+      - name: "approved"
+        type: "boolean"
+        required: false
+        description: "Whether this vendor is on the approved supplier list"
+      - name: "rating"
+        type: "decimal"
+        required: false
+        description: "Vendor performance rating (0.0–5.0)"
+      - name: "primary_contact"
+        type: "ref:Person"
+        required: false
+        description: "Main contact person at this vendor"
+      - name: "payment_method"
+        type: "enum"
+        values: ["BankTransfer", "DirectDebit", "CreditCard", "Cheque", "Other"]
+        required: false
+        description: "Preferred payment method"
+    relationships:
+      - name: "supplies"
+        target: "Product"
+        cardinality: "0..*"
+        inverse: "suppliedBy"
+        description: "Products this vendor supplies"
+
+  - id: "Client"
+    layer: L2
+    inherits: "ExternalOrganisation"
+    abstract: false
+    label: "Client"
+    description: >
+      A customer organisation (B2B). Distinguished from Customer
+      (a person) — a Client is an organisation that buys from us.
+    synonyms:
+      - "customer org"
+      - "opdrachtgever"
+      - "klantorganisatie"
+      - "account"
+    mixins: []
+    properties:
+      - name: "client_id"
+        type: "string"
+        required: false
+        description: "Internal client identifier"
+      - name: "account_manager"
+        type: "ref:Person"
+        required: false
+        description: "Internal account manager for this client"
+      - name: "annual_revenue"
+        type: "decimal"
+        required: false
+        description: "Annual revenue from this client"
+    relationships: []
+
+  - id: "Partner"
+    layer: L2
+    inherits: "ExternalOrganisation"
+    abstract: false
+    label: "Partner"
+    description: >
+      A strategic partner organisation — joint ventures, alliances,
+      channel partners, technology partners.
+    synonyms:
+      - "strategic partner"
+      - "alliance partner"
+      - "samenwerkingspartner"
+    mixins: []
+    properties:
+      - name: "partnership_type"
+        type: "enum"
+        values: ["JointVenture", "ChannelPartner", "TechnologyPartner", "ResearchPartner", "Other"]
+        required: false
+        description: "Type of partnership"
+      - name: "partnership_agreement"
+        type: "ref:Contract"
+        required: false
+        description: "The contract governing this partnership"
+    relationships: []
+
+  - id: "RegulatoryBody"
+    layer: L2
+    inherits: "ExternalOrganisation"
+    abstract: false
+    label: "RegulatoryBody"
+    description: >
+      A government agency, regulator, or standards body that
+      oversees the organisation's activities.
+    synonyms:
+      - "regulator"
+      - "authority"
+      - "toezichthouder"
+      - "regelgevende instantie"
+    mixins: []
+    properties:
+      - name: "jurisdiction"
+        type: "string"
+        required: false
+        description: "Geographic or sectoral jurisdiction"
+      - name: "regulatory_domain"
+        type: "string"
+        required: false
+        description: "Domain of regulation (e.g., 'Environmental', 'Financial', 'Safety')"
+    relationships: []
+
+  - id: "LegalEntity"
+    layer: L2
+    inherits: "Organisation"
+    abstract: false
+    label: "LegalEntity"
+    description: >
+      A specific legal entity — used when the legal structure matters
+      (holding companies, subsidiaries, SPVs). A single commercial
+      Organisation may comprise multiple LegalEntities.
+    synonyms:
+      - "legal person"
+      - "rechtspersoon"
+      - "juridische entiteit"
+    mixins:
+      - "Auditable"
+    properties:
+      - name: "entity_type"
+        type: "enum"
+        values: ["BV", "NV", "GmbH", "Ltd", "LLC", "SA", "AG", "Other"]
+        required: false
+        description: "Legal form (jurisdiction-dependent)"
+      - name: "parent_entity"
+        type: "ref:LegalEntity"
+        required: false
+        description: "Parent entity in the corporate structure"
+      - name: "country_of_incorporation"
+        type: "string"
+        required: false
+        description: "ISO 3166-1 alpha-2 country code"
+    relationships: []
+
+
+  # ════════════════════════════════════════════════════════════════════
+  # OBJECT BRANCH — What exists but does not act
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: "Product"
+    layer: L2
+    inherits: "Object"
+    abstract: false
+    label: "Product"
+    description: >
+      A good or service that the organisation offers, consumes, or
+      trades. Products sit under Object, not Actor — they do not
+      act intentionally.
+    synonyms:
+      - "item"
+      - "artikel"
+      - "product"
+      - "sku"
+    mixins:
+      - "Trackable"
+      - "Classifiable"
+    properties:
+      - name: "product_name"
+        type: "string"
+        required: true
+        description: "Product name or title"
+      - name: "product_code"
+        type: "string"
+        required: false
+        description: "Internal product code or SKU"
+      - name: "category"
+        type: "ref:Classification"
+        required: false
+        description: "Product category from a controlled vocabulary"
+      - name: "unit_price"
+        type: "decimal"
+        required: false
+        description: "Standard unit price"
+      - name: "unit_of_measure"
+        type: "string"
+        required: false
+        description: "Unit of measure (e.g., 'piece', 'kg', 'litre', 'hour')"
+      - name: "active"
+        type: "boolean"
+        required: false
+        default: true
+        description: "Whether this product is currently active/available"
+    relationships:
+      - name: "suppliedBy"
+        target: "Vendor"
+        cardinality: "0..*"
+        inverse: "supplies"
+        description: "Vendors that supply this product"
+
+  - id: "Good"
+    layer: L2
+    inherits: "Product"
+    abstract: false
+    label: "Good"
+    description: >
+      A physical, tangible product — something that can be shipped,
+      stored, and inventoried.
+    synonyms:
+      - "physical product"
+      - "tangible product"
+      - "goed"
+      - "fysiek product"
+    mixins: []
+    properties:
+      - name: "weight_kg"
+        type: "decimal"
+        required: false
+        description: "Weight in kilograms"
+      - name: "dimensions"
+        type: "string"
+        required: false
+        description: "Dimensions (L×W×H) in standard format"
+      - name: "hazardous"
+        type: "boolean"
+        required: false
+        description: "Whether this good requires hazardous materials handling"
+    relationships: []
+
+  - id: "Service"
+    layer: L2
+    inherits: "Product"
+    abstract: false
+    label: "Service"
+    description: >
+      An intangible product — consulting, maintenance, training,
+      support, or any service offering.
+    synonyms:
+      - "service offering"
+      - "dienst"
+      - "dienstverlening"
+    mixins: []
+    properties:
+      - name: "service_type"
+        type: "enum"
+        values: ["Consulting", "Maintenance", "Training", "Support", "Implementation", "Other"]
+        required: false
+        description: "Type of service"
+      - name: "billing_model"
+        type: "enum"
+        values: ["Fixed", "TimeAndMaterial", "Subscription", "UsageBased"]
+        required: false
+        description: "How this service is billed"
+    relationships: []
+
+  - id: "Asset"
+    layer: L2
+    inherits: "Object"
+    abstract: false
+    label: "Asset"
+    description: >
+      Something of value owned or controlled by the organisation.
+      Includes physical equipment, vehicles, IT hardware, and
+      digital assets like software licences.
+    synonyms:
+      - "equipment"
+      - "bedrijfsmiddel"
+      - "apparaat"
+      - "inventaris"
+    mixins:
+      - "Trackable"
+      - "Locatable"
+      - "Auditable"
+    properties:
+      - name: "asset_tag"
+        type: "string"
+        required: true
+        description: "Unique asset tag or inventory number"
+      - name: "asset_type"
+        type: "enum"
+        values: ["Physical", "Digital"]
+        required: false
+        description: "Whether this is a physical or digital asset"
+      - name: "acquisition_date"
+        type: "date"
+        required: false
+        description: "Date the asset was acquired"
+      - name: "acquisition_cost"
+        type: "decimal"
+        required: false
+        description: "Original purchase cost"
+      - name: "book_value"
+        type: "decimal"
+        required: false
+        description: "Current book value after depreciation"
+      - name: "assigned_to"
+        type: "ref:Person"
+        required: false
+        description: "Person currently assigned this asset"
+      - name: "condition"
+        type: "enum"
+        values: ["New", "Good", "Fair", "Poor", "Decommissioned"]
+        required: false
+        description: "Current physical condition"
+      - name: "warranty_expiry"
+        type: "date"
+        required: false
+        description: "Warranty expiry date"
+    relationships:
+      - name: "assignedTo"
+        target: "Person"
+        cardinality: "0..1"
+        description: "Person currently responsible for this asset"
+      - name: "locatedAt"
+        target: "Facility"
+        cardinality: "0..1"
+        description: "Facility where this asset is physically located"
+
+  - id: "PhysicalAsset"
+    layer: L2
+    inherits: "Asset"
+    abstract: false
+    label: "PhysicalAsset"
+    description: "A tangible, physical asset (machinery, vehicles, furniture, IT hardware)."
+    synonyms:
+      - "physical equipment"
+      - "fysiek bedrijfsmiddel"
+    mixins: []
+    properties:
+      - name: "serial_number"
+        type: "string"
+        required: false
+        description: "Manufacturer serial number"
+      - name: "manufacturer"
+        type: "string"
+        required: false
+        description: "Manufacturer name"
+      - name: "model"
+        type: "string"
+        required: false
+        description: "Model name or number"
+    relationships: []
+
+  - id: "DigitalAsset"
+    layer: L2
+    inherits: "Asset"
+    abstract: false
+    label: "DigitalAsset"
+    description: "A digital or intangible asset (software licence, patent, domain name, digital media)."
+    synonyms:
+      - "software asset"
+      - "licence"
+      - "digitaal bedrijfsmiddel"
+    mixins: []
+    properties:
+      - name: "licence_type"
+        type: "enum"
+        values: ["Perpetual", "Subscription", "OpenSource", "OEM", "Other"]
+        required: false
+        description: "Type of software licence"
+      - name: "licence_expiry"
+        type: "date"
+        required: false
+        description: "Licence expiry date (null if perpetual)"
+      - name: "seats"
+        type: "integer"
+        required: false
+        description: "Number of licensed seats or users"
+    relationships: []
+
+  - id: "Facility"
+    layer: L2
+    inherits: "Object"
+    abstract: false
+    label: "Facility"
+    description: >
+      A physical location used for business: an office, warehouse,
+      factory, site, or laboratory. Facilities contain assets and
+      are where activities occur.
+    synonyms:
+      - "building"
+      - "premises"
+      - "locatie"
+      - "gebouw"
+      - "vestiging"
+    mixins:
+      - "Trackable"
+      - "Locatable"
+    properties:
+      - name: "facility_name"
+        type: "string"
+        required: true
+        description: "Name of the facility"
+      - name: "facility_type"
+        type: "enum"
+        values: ["Office", "Warehouse", "Site", "Factory", "Lab", "DataCentre", "Retail"]
+        required: false
+        description: "Type of facility"
+      - name: "capacity"
+        type: "integer"
+        required: false
+        description: "Capacity (people, units, or relevant measure)"
+      - name: "managed_by"
+        type: "ref:Person"
+        required: false
+        description: "Facility manager"
+      - name: "parent_facility"
+        type: "ref:Facility"
+        required: false
+        description: "Parent facility (e.g., a shopfloor within a factory)"
+      - name: "address"
+        type: "string"
+        required: false
+        description: "Full street address"
+    relationships:
+      - name: "managedBy"
+        target: "Person"
+        cardinality: "0..1"
+        description: "Person managing this facility"
+      - name: "containsAsset"
+        target: "Asset"
+        cardinality: "0..*"
+        inverse: "locatedAt"
+        description: "Assets located in this facility"
+
+  - id: "Office"
+    layer: L2
+    inherits: "Facility"
+    abstract: false
+    label: "Office"
+    description: "An office space used primarily for administrative and knowledge work."
+    synonyms: ["kantoor", "bureau"]
+    mixins: []
+    properties: []
+    relationships: []
+
+  - id: "Warehouse"
+    layer: L2
+    inherits: "Facility"
+    abstract: false
+    label: "Warehouse"
+    description: "A facility used for storing goods, materials, and inventory."
+    synonyms: ["magazijn", "opslagplaats", "depot"]
+    mixins: []
+    properties:
+      - name: "storage_capacity_m2"
+        type: "decimal"
+        required: false
+        description: "Storage area in square metres"
+      - name: "temperature_controlled"
+        type: "boolean"
+        required: false
+        description: "Whether the warehouse has temperature control"
+    relationships: []
+
+  - id: "Site"
+    layer: L2
+    inherits: "Facility"
+    abstract: false
+    label: "Site"
+    description: "A general-purpose site that may combine multiple facility types."
+    synonyms: ["terrein", "locatie", "site"]
+    mixins: []
+    properties: []
+    relationships: []
+
+
+  # ════════════════════════════════════════════════════════════════════
+  # PLACE SPECIALISATIONS
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: "PhysicalPlace"
+    layer: L2
+    inherits: "Place"
+    abstract: false
+    label: "PhysicalPlace"
+    description: "A specific physical location identified by coordinates or address."
+    synonyms: ["fysieke locatie", "adres"]
+    mixins: []
+    properties:
+      - name: "address"
+        type: "string"
+        required: false
+        description: "Street address"
+      - name: "city"
+        type: "string"
+        required: false
+        description: "City or municipality"
+      - name: "postal_code"
+        type: "string"
+        required: false
+        description: "Postal / zip code"
+      - name: "country"
+        type: "string"
+        required: false
+        description: "ISO 3166-1 alpha-2 country code"
+      - name: "latitude"
+        type: "decimal"
+        required: false
+        description: "GPS latitude"
+      - name: "longitude"
+        type: "decimal"
+        required: false
+        description: "GPS longitude"
+    relationships: []
+
+  - id: "Region"
+    layer: L2
+    inherits: "Place"
+    abstract: false
+    label: "Region"
+    description: >
+      A named geographic or business region (e.g., 'EMEA',
+      'Benelux', 'North America', 'Flanders').
+    synonyms: ["regio", "gebied", "zone"]
+    mixins: []
+    properties:
+      - name: "region_code"
+        type: "string"
+        required: false
+        description: "Internal region code"
+      - name: "countries"
+        type: "string[]"
+        required: false
+        description: "ISO 3166-1 alpha-2 country codes covered by this region"
+    relationships: []
+
+  - id: "VirtualPlace"
+    layer: L2
+    inherits: "Place"
+    abstract: false
+    label: "VirtualPlace"
+    description: >
+      A virtual or digital location: a cloud region, a SharePoint
+      site, a network segment, a virtual workspace.
+    synonyms: ["virtual location", "virtuele locatie", "digital space"]
+    mixins: []
+    properties:
+      - name: "url"
+        type: "url"
+        required: false
+        description: "URL or URI of the virtual location"
+      - name: "platform"
+        type: "string"
+        required: false
+        description: "Platform (e.g., 'Azure', 'SharePoint', 'Teams', 'AWS')"
+    relationships: []
+
+
+  # ════════════════════════════════════════════════════════════════════
+  # ROLE SPECIALISATIONS
+  # ════════════════════════════════════════════════════════════════════
+  # Roles are Characteristics (L1), not Entities. They describe the
+  # function someone plays in a context, not who they are.
+
+  - id: "JobRole"
+    layer: L2
+    inherits: "Role"
+    abstract: false
+    label: "JobRole"
+    description: >
+      A formal position or function within the organisation's
+      structure (e.g., 'Financial Controller', 'Quality Manager').
+    synonyms:
+      - "position"
+      - "functie"
+      - "functietitel"
+    mixins: []
+    properties:
+      - name: "department"
+        type: "ref:Department"
+        required: false
+        description: "Department this role belongs to"
+      - name: "level"
+        type: "enum"
+        values: ["Junior", "Medior", "Senior", "Lead", "Manager", "Director", "Executive"]
+        required: false
+        description: "Seniority level"
+    relationships: []
+
+  - id: "ProcessRole"
+    layer: L2
+    inherits: "Role"
+    abstract: false
+    label: "ProcessRole"
+    description: >
+      A role within a business process — Approver, Reviewer, Owner,
+      Requester, Executor. A person may hold different process roles
+      in different processes.
+    synonyms:
+      - "process function"
+      - "procesrol"
+    mixins: []
+    properties:
+      - name: "process_role_type"
+        type: "enum"
+        values: ["Owner", "Approver", "Reviewer", "Requester", "Executor", "Escalation"]
+        required: false
+        description: "Type of process role"
+    relationships:
+      - name: "appliesTo"
+        target: "BusinessProcess"
+        cardinality: "0..*"
+        description: "Processes where this role is relevant"
+
+  - id: "ProjectRole"
+    layer: L2
+    inherits: "Role"
+    abstract: false
+    label: "ProjectRole"
+    description: >
+      A role within a project — Lead, Member, Sponsor, Steering
+      Committee, Stakeholder.
+    synonyms:
+      - "project function"
+      - "projectrol"
+    mixins: []
+    properties:
+      - name: "project_role_type"
+        type: "enum"
+        values: ["Lead", "Member", "Sponsor", "SteeringCommittee", "Stakeholder"]
+        required: false
+        description: "Type of project role"
+    relationships:
+      - name: "appliesTo"
+        target: "Project"
+        cardinality: "0..*"
+        description: "Projects where this role is relevant"

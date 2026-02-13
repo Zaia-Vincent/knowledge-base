@@ -1,0 +1,605 @@
+# ══════════════════════════════════════════════════════════════════════
+# LAYER 2 — UNIVERSAL ENTERPRISE ONTOLOGY: PROCESSES
+# ══════════════════════════════════════════════════════════════════════
+# The Process Pillar answers "How does work get done?" and
+# "What happened?"
+#
+# Extends L1 concepts: Process, Task, Event, State.
+#
+# Note on naming: L1 defines "Activity" as the abstract parent of
+# Process, Task, and Event. To avoid ID collision, L2's concept of
+# "a step within a process" is named "ProcessActivity" here.
+# Its label remains "Activity" for business users.
+# ══════════════════════════════════════════════════════════════════════
+
+layer:
+  id: L2
+  name: "Enterprise"
+  version: "2.3.0"
+  locked: true
+  namespace: "enterprise.processes"
+
+
+concepts:
+
+  # ════════════════════════════════════════════════════════════════════
+  # PROCESS SPECIALISATIONS
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: "BusinessProcess"
+    layer: L2
+    inherits: "Process"
+    abstract: false
+    label: "BusinessProcess"
+    description: >
+      A defined, repeatable business process with steps, inputs,
+      outputs, and an owner. The primary unit of process management.
+    synonyms:
+      - "workflow"
+      - "procedure"
+      - "bedrijfsproces"
+      - "werkproces"
+    mixins:
+      - "Trackable"
+      - "Classifiable"
+    properties:
+      - name: "process_id"
+        type: "string"
+        required: true
+        description: "Unique process identifier"
+      - name: "process_name"
+        type: "string"
+        required: true
+        description: "Human-readable process name"
+      - name: "domain"
+        type: "ref:BusinessDomain"
+        required: false
+        description: "Business domain this process belongs to"
+      - name: "owner"
+        type: "ref:Person"
+        required: false
+        description: "Process owner (accountable for the process)"
+      - name: "sla_hours"
+        type: "integer"
+        required: false
+        description: "Service level agreement in hours (target completion time)"
+      - name: "maturity_level"
+        type: "enum"
+        values: ["AdHoc", "Defined", "Managed", "Measured", "Optimised"]
+        required: false
+        description: "Process maturity level (CMMI-inspired)"
+      - name: "frequency"
+        type: "enum"
+        values: ["OnDemand", "Daily", "Weekly", "Monthly", "Quarterly", "Annually"]
+        required: false
+        description: "How often this process typically runs"
+    relationships:
+      - name: "belongsTo"
+        target: "BusinessDomain"
+        cardinality: "0..1"
+        description: "Business domain this process is part of"
+      - name: "producesDocument"
+        target: "Document"
+        cardinality: "0..*"
+        description: "Documents produced by this process"
+      - name: "consumesDocument"
+        target: "Document"
+        cardinality: "0..*"
+        description: "Documents consumed as input by this process"
+      - name: "governedBy"
+        target: "Policy"
+        cardinality: "0..*"
+        description: "Policies that govern how this process operates"
+
+  - id: "OperationalProcess"
+    layer: L2
+    inherits: "BusinessProcess"
+    abstract: false
+    label: "OperationalProcess"
+    description: >
+      A core operational process that delivers value to customers
+      or produces the organisation's products and services.
+      Examples: order-to-cash, procure-to-pay, manufacturing.
+    synonyms:
+      - "core process"
+      - "primary process"
+      - "operationeel proces"
+      - "kernproces"
+    mixins: []
+    properties: []
+    relationships: []
+
+  - id: "SupportProcess"
+    layer: L2
+    inherits: "BusinessProcess"
+    abstract: false
+    label: "SupportProcess"
+    description: >
+      A process that supports operational processes: IT services,
+      HR administration, facility management, finance.
+    synonyms:
+      - "support workflow"
+      - "ondersteunend proces"
+    mixins: []
+    properties: []
+    relationships: []
+
+  - id: "ManagementProcess"
+    layer: L2
+    inherits: "BusinessProcess"
+    abstract: false
+    label: "ManagementProcess"
+    description: >
+      A process that governs the organisation: strategic planning,
+      compliance management, risk management, budgeting.
+    synonyms:
+      - "governance process"
+      - "managementproces"
+      - "bestuursproces"
+    mixins: []
+    properties: []
+    relationships: []
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # ProcessActivity — a step within a process
+  # ──────────────────────────────────────────────────────────────────
+  # Note: named "ProcessActivity" to avoid ID collision with L1
+  # "Activity". Business users see label "Activity".
+
+  - id: "ProcessActivity"
+    layer: L2
+    inherits: "Process"
+    abstract: false
+    label: "Activity"
+    description: >
+      A discrete step within a business process. Activities have a
+      sequence, a responsible role, and may be manual or automated.
+      They compose into BusinessProcesses via the hasPart relationship.
+    synonyms:
+      - "step"
+      - "process step"
+      - "processtap"
+      - "activiteit"
+    mixins: []
+    properties:
+      - name: "sequence_number"
+        type: "integer"
+        required: false
+        description: "Order of this activity within its parent process"
+      - name: "responsible"
+        type: "ref:Role"
+        required: false
+        description: "The role responsible for executing this activity"
+      - name: "duration_hours"
+        type: "decimal"
+        required: false
+        description: "Expected duration in hours"
+      - name: "is_automated"
+        type: "boolean"
+        required: false
+        description: "Whether this activity is fully automated"
+      - name: "predecessor"
+        type: "ref:ProcessActivity"
+        required: false
+        description: "Activity that must complete before this one starts"
+      - name: "successor"
+        type: "ref:ProcessActivity"
+        required: false
+        description: "Activity that starts after this one completes"
+    relationships:
+      - name: "partOf"
+        target: "BusinessProcess"
+        cardinality: "0..1"
+        description: "The business process this activity belongs to"
+
+  - id: "ApprovalActivity"
+    layer: L2
+    inherits: "ProcessActivity"
+    abstract: false
+    label: "ApprovalActivity"
+    description: >
+      An activity that requires a decision: approve, reject, or
+      escalate. Often gated by monetary thresholds.
+    synonyms:
+      - "approval"
+      - "approval step"
+      - "goedkeuring"
+      - "goedkeuringsstap"
+    mixins: []
+    properties:
+      - name: "approval_threshold"
+        type: "decimal"
+        required: false
+        description: "Monetary threshold above which this approval is required"
+      - name: "threshold_currency"
+        type: "string"
+        required: false
+        description: "ISO 4217 currency code for the threshold"
+      - name: "required_role"
+        type: "ref:Role"
+        required: false
+        description: "Role required to perform this approval"
+      - name: "escalation_after_hours"
+        type: "integer"
+        required: false
+        description: "Hours after which unapproved items are escalated"
+    relationships: []
+
+  - id: "ReviewActivity"
+    layer: L2
+    inherits: "ProcessActivity"
+    abstract: false
+    label: "ReviewActivity"
+    description: >
+      An activity where someone reviews, inspects, or checks
+      something — a document, deliverable, or quality gate.
+    synonyms:
+      - "review"
+      - "inspection"
+      - "check"
+      - "beoordeling"
+      - "controle"
+    mixins: []
+    properties:
+      - name: "review_type"
+        type: "enum"
+        values: ["PeerReview", "ManagerReview", "QualityCheck", "ComplianceReview", "TechnicalReview"]
+        required: false
+        description: "Type of review"
+      - name: "checklist"
+        type: "string[]"
+        required: false
+        description: "Items to be checked during this review"
+    relationships: []
+
+  - id: "TransformationActivity"
+    layer: L2
+    inherits: "ProcessActivity"
+    abstract: false
+    label: "TransformationActivity"
+    description: >
+      An activity that transforms inputs into outputs: assembly,
+      data processing, report generation, conversion.
+    synonyms:
+      - "transformation"
+      - "conversion"
+      - "processing"
+      - "verwerking"
+      - "transformatie"
+    mixins: []
+    properties:
+      - name: "transformation_type"
+        type: "enum"
+        values: ["Physical", "DataProcessing", "DocumentGeneration", "Calculation", "Other"]
+        required: false
+        description: "Type of transformation"
+    relationships: []
+
+  - id: "CommunicationActivity"
+    layer: L2
+    inherits: "ProcessActivity"
+    abstract: false
+    label: "CommunicationActivity"
+    description: >
+      An activity that involves sending or receiving information:
+      notifications, meetings, presentations, handovers.
+    synonyms:
+      - "communication"
+      - "notification step"
+      - "communicatie"
+    mixins: []
+    properties:
+      - name: "communication_channel"
+        type: "enum"
+        values: ["Email", "Meeting", "Phone", "Letter", "System", "Chat"]
+        required: false
+        description: "Channel used for this communication"
+      - name: "audience"
+        type: "ref:Role[]"
+        required: false
+        description: "Roles that are the audience for this communication"
+    relationships: []
+
+
+  # ════════════════════════════════════════════════════════════════════
+  # PROJECT — a time-bounded endeavour
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: "Project"
+    layer: L2
+    inherits: "Process"
+    abstract: false
+    label: "Project"
+    description: >
+      A temporary, time-bounded endeavour with a defined goal, budget,
+      and team. Projects produce deliverables and have phases.
+    synonyms:
+      - "programme"
+      - "initiative"
+      - "project"
+      - "programma"
+    mixins:
+      - "Trackable"
+      - "HasMonetaryValue"
+    properties:
+      - name: "project_code"
+        type: "string"
+        required: true
+        description: "Unique project code"
+      - name: "project_name"
+        type: "string"
+        required: true
+        description: "Human-readable project name"
+      - name: "start_date"
+        type: "date"
+        required: false
+        description: "Planned or actual start date"
+      - name: "end_date"
+        type: "date"
+        required: false
+        description: "Planned or actual end date"
+      - name: "budget"
+        type: "decimal"
+        required: false
+        description: "Total project budget"
+      - name: "sponsor"
+        type: "ref:Person"
+        required: false
+        description: "Executive sponsor"
+      - name: "project_manager"
+        type: "ref:Person"
+        required: false
+        description: "Project manager"
+      - name: "status"
+        type: "ref:ProcessState"
+        required: false
+        description: "Current project status"
+      - name: "phase"
+        type: "enum"
+        values: ["Initiation", "Planning", "Execution", "Monitoring", "Closure"]
+        required: false
+        description: "Current project phase"
+    relationships:
+      - name: "deliverableOf"
+        target: "Document"
+        cardinality: "0..*"
+        description: "Documents produced as deliverables of this project"
+
+  - id: "InternalProject"
+    layer: L2
+    inherits: "Project"
+    abstract: false
+    label: "InternalProject"
+    description: >
+      A project for internal improvement: IT implementations, process
+      redesign, infrastructure upgrades.
+    synonyms:
+      - "internal initiative"
+      - "intern project"
+    mixins: []
+    properties:
+      - name: "business_case"
+        type: "string"
+        required: false
+        description: "Business case justification"
+    relationships: []
+
+  - id: "ClientProject"
+    layer: L2
+    inherits: "Project"
+    abstract: false
+    label: "ClientProject"
+    description: >
+      A project delivered for an external client, typically revenue-
+      generating and governed by a contract.
+    synonyms:
+      - "customer project"
+      - "klantproject"
+      - "opdrachtproject"
+    mixins: []
+    properties:
+      - name: "client"
+        type: "ref:Client"
+        required: false
+        description: "Client this project is for"
+      - name: "contract"
+        type: "ref:Contract"
+        required: false
+        description: "Contract governing this project"
+    relationships:
+      - name: "deliveredTo"
+        target: "Client"
+        cardinality: "0..1"
+        description: "Client receiving this project's deliverables"
+
+
+  # ════════════════════════════════════════════════════════════════════
+  # EVENT SPECIALISATIONS
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: "BusinessEvent"
+    layer: L2
+    inherits: "Event"
+    abstract: false
+    label: "BusinessEvent"
+    description: >
+      A noteworthy business occurrence. Events are triggers — they
+      cause processes or tasks to start, change, or end.
+    synonyms:
+      - "event"
+      - "bedrijfsgebeurtenis"
+      - "voorval"
+    mixins:
+      - "Trackable"
+    properties:
+      - name: "event_date"
+        type: "datetime"
+        required: false
+        description: "When the event occurred"
+      - name: "severity"
+        type: "enum"
+        values: ["Info", "Warning", "Minor", "Major", "Critical"]
+        required: false
+        description: "Severity or importance of the event"
+    relationships:
+      - name: "triggers"
+        target: "Activity"
+        cardinality: "0..*"
+        description: "Activities triggered by this event"
+
+  - id: "TransactionEvent"
+    layer: L2
+    inherits: "BusinessEvent"
+    abstract: false
+    label: "TransactionEvent"
+    description: >
+      An event representing a financial or commercial transaction:
+      a payment, a shipment, a delivery, an order.
+    synonyms:
+      - "transaction"
+      - "transactie"
+    mixins:
+      - "HasMonetaryValue"
+    properties:
+      - name: "transaction_type"
+        type: "enum"
+        values: ["Payment", "Shipment", "Delivery", "Order", "Return", "WriteOff"]
+        required: false
+        description: "Type of transaction"
+      - name: "reference_number"
+        type: "string"
+        required: false
+        description: "Transaction reference number"
+    relationships: []
+
+  - id: "MilestoneEvent"
+    layer: L2
+    inherits: "BusinessEvent"
+    abstract: false
+    label: "MilestoneEvent"
+    description: >
+      A significant point in a process or project: a phase gate,
+      a go-live, a deadline, a delivery milestone.
+    synonyms:
+      - "milestone"
+      - "mijlpaal"
+    mixins: []
+    properties:
+      - name: "planned_date"
+        type: "date"
+        required: false
+        description: "Originally planned date for this milestone"
+      - name: "actual_date"
+        type: "date"
+        required: false
+        description: "Actual date the milestone was reached"
+      - name: "variance_days"
+        type: "integer"
+        required: false
+        description: "Difference between planned and actual (positive = late)"
+    relationships: []
+
+  - id: "EscalationEvent"
+    layer: L2
+    inherits: "BusinessEvent"
+    abstract: false
+    label: "EscalationEvent"
+    description: >
+      An event where an issue is escalated to a higher authority:
+      SLA breach, unresolved dispute, approval timeout.
+    synonyms:
+      - "escalation"
+      - "escalatie"
+    mixins: []
+    properties:
+      - name: "escalated_to"
+        type: "ref:Person"
+        required: false
+        description: "Person the issue was escalated to"
+      - name: "escalation_reason"
+        type: "string"
+        required: false
+        description: "Reason for escalation"
+      - name: "original_deadline"
+        type: "datetime"
+        required: false
+        description: "The deadline that was missed or breached"
+    relationships: []
+
+  - id: "ComplianceEvent"
+    layer: L2
+    inherits: "BusinessEvent"
+    abstract: false
+    label: "ComplianceEvent"
+    description: >
+      An event related to regulatory or policy compliance: an audit
+      finding, a certification, a violation, a regulatory change.
+    synonyms:
+      - "compliance incident"
+      - "nalevingsgebeurtenis"
+      - "audit finding"
+    mixins:
+      - "Auditable"
+    properties:
+      - name: "compliance_type"
+        type: "enum"
+        values: ["AuditFinding", "Violation", "Certification", "RegulatoryChange", "PolicyUpdate"]
+        required: false
+        description: "Type of compliance event"
+      - name: "regulatory_body"
+        type: "ref:RegulatoryBody"
+        required: false
+        description: "Regulatory body involved"
+      - name: "remediation_deadline"
+        type: "date"
+        required: false
+        description: "Deadline for remediation (if applicable)"
+    relationships: []
+
+
+  # ════════════════════════════════════════════════════════════════════
+  # STATE SPECIALISATIONS
+  # ════════════════════════════════════════════════════════════════════
+  # ProcessState is a concept; the individual states (Draft, InProgress,
+  # etc.) are modelled as well-known instances rather than sub-concepts.
+  # The enum values are defined here for reference; the actual lifecycle
+  # definitions will be captured as data in the metadata store.
+
+  - id: "ProcessState"
+    layer: L2
+    inherits: "State"
+    abstract: false
+    label: "ProcessState"
+    description: >
+      The lifecycle state of a process, task, project, or document.
+      Standard lifecycle values: Draft → InProgress → PendingApproval
+      → Approved/Rejected → Completed/Cancelled.
+    synonyms:
+      - "process status"
+      - "lifecycle state"
+      - "processtatus"
+    mixins: []
+    properties:
+      - name: "state_category"
+        type: "enum"
+        values: ["Draft", "InProgress", "PendingApproval", "Approved", "Rejected", "Completed", "Cancelled", "OnHold", "Archived"]
+        required: false
+        description: "Standard lifecycle state category"
+      - name: "entered_at"
+        type: "datetime"
+        required: false
+        description: "When the entity entered this state"
+      - name: "entered_by"
+        type: "ref:Actor"
+        required: false
+        description: "Who moved the entity into this state"
+      - name: "reason"
+        type: "string"
+        required: false
+        description: "Reason for the state transition (especially for rejections/cancellations)"
+    relationships:
+      - name: "previousState"
+        target: "ProcessState"
+        cardinality: "0..1"
+        description: "The state this entity was in before the current one"

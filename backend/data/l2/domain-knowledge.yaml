@@ -1,0 +1,320 @@
+# ══════════════════════════════════════════════════════════════════════
+# LAYER 2 — UNIVERSAL ENTERPRISE ONTOLOGY: DOMAIN KNOWLEDGE
+# ══════════════════════════════════════════════════════════════════════
+# The Domain Knowledge Pillar provides context and vocabulary:
+# classifications, quantities, identifiers, and reference data.
+#
+# Extends L1 concepts: Characteristic (Quantity, Status), Identifier.
+# Introduces: Classification and its specialisations.
+#
+# These concepts are the "adjectives and labels" of the ontology —
+# they describe, measure, classify, and identify the Entities,
+# Activities, and Resources defined in the other pillars.
+# ══════════════════════════════════════════════════════════════════════
+
+layer:
+  id: L2
+  name: "Enterprise"
+  version: "2.3.0"
+  locked: true
+  namespace: "enterprise.domain-knowledge"
+
+
+concepts:
+
+  # ════════════════════════════════════════════════════════════════════
+  # QUANTITY SPECIALISATIONS  (from L1 Characteristic → Quantity)
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: "MonetaryAmount"
+    layer: L2
+    inherits: "Quantity"
+    abstract: false
+    label: "MonetaryAmount"
+    description: >
+      A quantity expressed in money: a price, cost, budget figure,
+      or financial value.
+    synonyms:
+      - "bedrag"
+      - "geldbedrag"
+      - "monetary value"
+      - "amount"
+    mixins: []
+    properties:
+      - name: "currency"
+        type: "string"
+        required: true
+        description: "ISO 4217 currency code (e.g., 'EUR', 'USD')"
+      - name: "exchange_rate"
+        type: "decimal"
+        required: false
+        description: "Exchange rate to base currency at time of recording"
+    relationships: []
+
+  - id: "Duration"
+    layer: L2
+    inherits: "Quantity"
+    abstract: false
+    label: "Duration"
+    description: >
+      A quantity of time: hours worked, lead time, cycle time,
+      downtime, SLA response time.
+    synonyms:
+      - "time span"
+      - "tijdsduur"
+      - "looptijd"
+      - "doorlooptijd"
+    mixins: []
+    properties:
+      - name: "duration_unit"
+        type: "enum"
+        values: ["Minutes", "Hours", "Days", "Weeks", "Months", "Years"]
+        required: false
+        description: "Unit of time"
+    relationships: []
+
+  - id: "Percentage"
+    layer: L2
+    inherits: "Quantity"
+    abstract: false
+    label: "Percentage"
+    description: >
+      A value expressed as a percentage: yield rate, utilisation,
+      confidence score, discount, tax rate.
+    synonyms:
+      - "percent"
+      - "rate"
+      - "percentage"
+      - "tarief"
+    mixins: []
+    properties: []
+    relationships: []
+
+  - id: "Count"
+    layer: L2
+    inherits: "Quantity"
+    abstract: false
+    label: "Count"
+    description: >
+      A whole-number quantity: headcount, item count, defect count,
+      inventory level.
+    synonyms:
+      - "number"
+      - "tally"
+      - "aantal"
+      - "telling"
+    mixins: []
+    properties: []
+    relationships: []
+
+
+  # ════════════════════════════════════════════════════════════════════
+  # CLASSIFICATION — controlled vocabularies and taxonomies
+  # ════════════════════════════════════════════════════════════════════
+  # Classification is a new L2 concept. It is NOT a Characteristic
+  # (which describes a quality of a single thing) — it is a reference
+  # entity from a controlled vocabulary used to label and categorise.
+
+  - id: "Classification"
+    layer: L2
+    inherits: "Entity"
+    abstract: false
+    label: "Classification"
+    description: >
+      A label or code from a controlled vocabulary. Used to
+      categorise entities, documents, and processes. Classifications
+      form hierarchies (e.g., industry codes, product categories).
+    synonyms:
+      - "category"
+      - "classificatie"
+      - "categorie"
+      - "taxonomy entry"
+    mixins:
+      - "Trackable"
+    properties:
+      - name: "code"
+        type: "string"
+        required: false
+        description: "Classification code (e.g., 'NACE 28.1', 'HS 8471')"
+      - name: "scheme"
+        type: "string"
+        required: true
+        description: "The vocabulary or taxonomy this classification belongs to"
+      - name: "parent_classification"
+        type: "ref:Classification"
+        required: false
+        description: "Parent in the classification hierarchy"
+      - name: "level"
+        type: "integer"
+        required: false
+        description: "Depth in the classification hierarchy (0 = root)"
+    relationships:
+      - name: "parentOf"
+        target: "Classification"
+        cardinality: "0..*"
+        description: "Child classifications below this one"
+
+  - id: "BusinessDomain"
+    layer: L2
+    inherits: "Classification"
+    abstract: false
+    label: "BusinessDomain"
+    description: >
+      A business functional domain: Procurement, HR, Finance, Sales,
+      IT, Operations, Legal, etc. Used to group processes, policies,
+      and documents by business area.
+    synonyms:
+      - "functional domain"
+      - "business area"
+      - "bedrijfsdomein"
+      - "functioneel domein"
+    mixins: []
+    properties:
+      - name: "domain_owner"
+        type: "ref:Person"
+        required: false
+        description: "Person accountable for this domain"
+    relationships: []
+
+  - id: "DocumentType"
+    layer: L2
+    inherits: "Classification"
+    abstract: false
+    label: "DocumentType"
+    description: >
+      A controlled vocabulary for document types, beyond the ontology
+      concept hierarchy. Used for fine-grained classification within
+      a document category.
+    synonyms:
+      - "doc type"
+      - "documenttype"
+      - "documentsoort"
+    mixins: []
+    properties: []
+    relationships: []
+
+  - id: "Priority"
+    layer: L2
+    inherits: "Classification"
+    abstract: false
+    label: "Priority"
+    description: >
+      A priority level from a controlled vocabulary. Standard values:
+      Low, Medium, High, Critical.
+    synonyms:
+      - "urgency"
+      - "prioriteit"
+      - "urgentie"
+    mixins: []
+    properties:
+      - name: "sort_order"
+        type: "integer"
+        required: false
+        description: "Numeric sort order (lower = higher priority)"
+    relationships: []
+
+  - id: "Confidentiality"
+    layer: L2
+    inherits: "Classification"
+    abstract: false
+    label: "Confidentiality"
+    description: >
+      A confidentiality or sensitivity classification. Standard
+      values: Public, Internal, Confidential, Restricted.
+    synonyms:
+      - "sensitivity"
+      - "security classification"
+      - "vertrouwelijkheid"
+      - "rubricering"
+    mixins: []
+    properties:
+      - name: "handling_instructions"
+        type: "string"
+        required: false
+        description: "Instructions for handling information at this level"
+    relationships: []
+
+
+  # ════════════════════════════════════════════════════════════════════
+  # IDENTIFIER SPECIALISATIONS  (from L1 Resource → Identifier)
+  # ════════════════════════════════════════════════════════════════════
+
+  - id: "InternalIdentifier"
+    layer: L2
+    inherits: "Identifier"
+    abstract: false
+    label: "InternalIdentifier"
+    description: >
+      An identifier issued by the organisation itself: employee IDs,
+      asset tags, internal project codes.
+    synonyms:
+      - "internal ID"
+      - "intern kenmerk"
+      - "intern nummer"
+    mixins: []
+    properties:
+      - name: "issuing_system"
+        type: "string"
+        required: false
+        description: "System that generated this identifier (e.g., 'SAP', 'HR System')"
+      - name: "format_pattern"
+        type: "string"
+        required: false
+        description: "Expected format pattern (e.g., 'EMP-[0-9]{6}')"
+    relationships: []
+
+  - id: "ExternalIdentifier"
+    layer: L2
+    inherits: "Identifier"
+    abstract: false
+    label: "ExternalIdentifier"
+    description: >
+      An identifier issued by an external authority: VAT numbers,
+      DUNS numbers, LEI codes, chamber of commerce registrations.
+    synonyms:
+      - "external ID"
+      - "extern kenmerk"
+      - "extern nummer"
+      - "registration number"
+    mixins: []
+    properties:
+      - name: "identifier_type"
+        type: "enum"
+        values: ["VAT", "DUNS", "LEI", "KvK", "CompaniesHouse", "EORI", "GLN", "IBAN", "BIC", "Other"]
+        required: false
+        description: "Type of external identifier"
+      - name: "issuing_authority"
+        type: "string"
+        required: false
+        description: "Authority that issued this identifier"
+      - name: "country"
+        type: "string"
+        required: false
+        description: "Country where this identifier is valid (ISO 3166-1 alpha-2)"
+      - name: "verified"
+        type: "boolean"
+        required: false
+        description: "Whether this identifier has been verified against the issuing authority"
+    relationships: []
+
+  - id: "ReferenceCode"
+    layer: L2
+    inherits: "Identifier"
+    abstract: false
+    label: "ReferenceCode"
+    description: >
+      A reference code used to link related items: a PO number
+      on an invoice, a contract reference on an order, a batch
+      number on a quality record.
+    synonyms:
+      - "reference"
+      - "referentie"
+      - "kenmerk"
+      - "ref number"
+    mixins: []
+    properties:
+      - name: "reference_context"
+        type: "string"
+        required: false
+        description: "Context in which this reference is used (e.g., 'Invoice→PO', 'NCR→Batch')"
+    relationships: []
