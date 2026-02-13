@@ -1,0 +1,24 @@
+[project]
+name = "knowledge-base-api"
+version = "0.1.0"
+description = "Knowledge Base API — FastAPI + SQLAlchemy backend"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]>=0.129.0",
+    "sqlalchemy[asyncio]>=2.0.46",
+    "alembic>=1.18.0",
+    "pydantic-settings>=2.12.0",
+    "python-dotenv>=1.2.0",
+    "httpx>=0.28.0",
+    "aiosqlite>=0.21.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.0",
+    "pytest-asyncio>=1.3.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
