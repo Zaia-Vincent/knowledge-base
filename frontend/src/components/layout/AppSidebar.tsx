@@ -8,6 +8,8 @@ import {
     PanelLeftClose,
     PanelLeft,
     MessageCircle,
+    FileUp,
+    Layers,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -34,6 +36,8 @@ interface NavGroup {
 const navItems: NavItem[] = [
     { label: 'Dashboard', path: '/', icon: <LayoutDashboard className="size-4" /> },
     { label: 'Chat', path: '/chat', icon: <MessageCircle className="size-4" /> },
+    { label: 'Files', path: '/files', icon: <FileUp className="size-4" /> },
+    { label: 'Ontology', path: '/ontology', icon: <Layers className="size-4" /> },
 ];
 
 const navGroups: NavGroup[] = [

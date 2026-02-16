@@ -8,12 +8,14 @@ from app.application.interfaces.chat_provider import ChatProvider
 from app.application.interfaces.chat_request_log_repository import (
     ChatRequestLogRepository,
 )
+from app.application.services.llm_usage_logger import LLMUsageLogger
 from app.domain.entities import (
     ChatMessage,
     ContentPart,
     ChatCompletionResult,
     ChatRequestLog,
 )
+from app.domain.entities.chat_message import TokenUsage
 from app.domain.exceptions import ChatProviderError
 from app.application.schemas.chat import ChatCompletionRequest, ChatMessageSchema
 
@@ -32,9 +34,11 @@ class ChatCompletionService:
         self,
         provider: ChatProvider,
         log_repository: ChatRequestLogRepository,
+        usage_logger: LLMUsageLogger | None = None,
     ):
         self._provider = provider
         self._log_repository = log_repository
+        self._usage_logger = usage_logger or LLMUsageLogger(log_repository)
 
     async def complete(self, request: ChatCompletionRequest) -> ChatCompletionResult:
         """Execute a non-streaming chat completion.
@@ -56,40 +60,25 @@ class ChatCompletionService:
             )
             duration_ms = int((time.monotonic() - start) * 1000)
 
-            # Log successful request
-            log_entry = ChatRequestLog(
+            await self._usage_logger.log_request(
                 model=result.model,
                 provider=result.provider or self._provider.provider_name,
-                prompt_tokens=result.usage.prompt_tokens,
-                completion_tokens=result.usage.completion_tokens,
-                total_tokens=result.usage.total_tokens,
-                cost=result.usage.cost,
+                feature="chat",
+                usage=result.usage,
                 duration_ms=duration_ms,
-                status="success",
-            )
-            await self._log_repository.create(log_entry)
-
-            logger.info(
-                "Chat completion: model=%s provider=%s tokens=%d cost=%s duration=%dms",
-                result.model,
-                log_entry.provider,
-                result.usage.total_tokens,
-                result.usage.cost,
-                duration_ms,
             )
 
             return result
 
         except ChatProviderError as e:
             duration_ms = int((time.monotonic() - start) * 1000)
-            log_entry = ChatRequestLog(
+            await self._usage_logger.log_error(
                 model=request.model,
                 provider=self._provider.provider_name,
+                feature="chat",
                 duration_ms=duration_ms,
-                status="error",
-                error_message=str(e),
+                error=e,
             )
-            await self._log_repository.create(log_entry)
             logger.error("Chat completion error: %s", e)
             raise
 
@@ -133,18 +122,28 @@ class ChatCompletionService:
             raise
         finally:
             duration_ms = int((time.monotonic() - start) * 1000)
-            log_entry = ChatRequestLog(
-                model=model_used,
-                provider=self._provider.provider_name,
+            usage = TokenUsage(
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
                 total_tokens=total_tokens,
                 cost=cost,
-                duration_ms=duration_ms,
-                status="error" if error_occurred else "success",
-                error_message=error_msg,
             )
-            await self._log_repository.create(log_entry)
+            if error_occurred:
+                await self._usage_logger.log_error(
+                    model=model_used,
+                    provider=self._provider.provider_name,
+                    feature="chat",
+                    duration_ms=duration_ms,
+                    error=Exception(error_msg or "Unknown streaming error"),
+                )
+            else:
+                await self._usage_logger.log_request(
+                    model=model_used,
+                    provider=self._provider.provider_name,
+                    feature="chat",
+                    usage=usage,
+                    duration_ms=duration_ms,
+                )
 
     @staticmethod
     def _to_domain_messages(
@@ -200,3 +199,4 @@ class ChatCompletionService:
     ) -> list[ChatRequestLog]:
         """Retrieve chat request logs for monitoring."""
         return await self._log_repository.get_all(skip=skip, limit=limit)
+

@@ -93,6 +93,10 @@ class ChatRequestLogResponse(BaseModel):
     duration_ms: int | None
     status: str
     error_message: str | None
+    feature: str = "chat"
+    tools_called: list[str] | None = None
+    tool_call_count: int = 0
+    request_context: str | None = None
     created_at: str  # ISO 8601
 
     model_config = {"from_attributes": True}

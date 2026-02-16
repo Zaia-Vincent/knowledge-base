@@ -1,5 +1,7 @@
 """Concrete repository for chat request logs backed by SQLAlchemy."""
 
+import json
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +18,13 @@ class SQLAlchemyChatRequestLogRepository(ChatRequestLogRepository):
 
     def _to_entity(self, model: ChatRequestLogModel) -> ChatRequestLog:
         """Map ORM model → domain entity."""
+        tools: list[str] | None = None
+        if model.tools_called:
+            try:
+                tools = json.loads(model.tools_called)
+            except json.JSONDecodeError:
+                tools = None
+
         return ChatRequestLog(
             id=model.id,
             model=model.model,
@@ -27,6 +36,10 @@ class SQLAlchemyChatRequestLogRepository(ChatRequestLogRepository):
             duration_ms=model.duration_ms,
             status=model.status,
             error_message=model.error_message,
+            feature=model.feature,
+            tools_called=tools,
+            tool_call_count=model.tool_call_count,
+            request_context=model.request_context,
             created_at=model.created_at,
         )
 
@@ -42,6 +55,10 @@ class SQLAlchemyChatRequestLogRepository(ChatRequestLogRepository):
             duration_ms=entity.duration_ms,
             status=entity.status,
             error_message=entity.error_message,
+            feature=entity.feature,
+            tools_called=json.dumps(entity.tools_called) if entity.tools_called else None,
+            tool_call_count=entity.tool_call_count,
+            request_context=entity.request_context,
         )
 
     async def create(self, log: ChatRequestLog) -> ChatRequestLog:

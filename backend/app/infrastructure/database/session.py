@@ -9,10 +9,10 @@ from app.config import get_settings
 
 def _get_async_url(url: str) -> str:
     """Convert a sync SQLAlchemy URL to an async one."""
-    if url.startswith("sqlite:///"):
-        return url.replace("sqlite:///", "sqlite+aiosqlite:///", 1)
     if url.startswith("postgresql://"):
         return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    if url.startswith("sqlite:///"):
+        return url.replace("sqlite:///", "sqlite+aiosqlite:///", 1)
     return url
 
 
@@ -21,7 +21,7 @@ _async_url = _get_async_url(settings.database_url)
 
 engine = create_async_engine(
     _async_url,
-    echo=(settings.app_env == "development"),
+    echo=False,  # SQL logging controlled by LOG_LEVEL_SQL via setup_logging()
     future=True,
 )
 

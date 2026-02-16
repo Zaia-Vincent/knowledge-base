@@ -108,6 +108,10 @@ async def get_chat_logs(
             duration_ms=log.duration_ms,
             status=log.status,
             error_message=log.error_message,
+            feature=log.feature,
+            tools_called=log.tools_called,
+            tool_call_count=log.tool_call_count,
+            request_context=log.request_context,
             created_at=log.created_at.isoformat(),
         )
         for log in logs

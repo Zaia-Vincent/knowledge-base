@@ -21,5 +21,9 @@ class ChatRequestLog:
     duration_ms: int | None = None
     status: str = "success"  # "success" | "error"
     error_message: str | None = None
+    feature: str = "chat"  # "chat" | "classification" | "extraction" | "pdf_processing"
+    tools_called: list[str] | None = None  # Tool names invoked during request
+    tool_call_count: int = 0  # Total number of tool invocations
+    request_context: str | None = None  # Extra context (e.g. filename)
     id: int | None = None
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))

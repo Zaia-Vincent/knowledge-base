@@ -23,6 +23,12 @@ class ChatRequestLogModel(Base):
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="success", nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    feature: Mapped[str] = mapped_column(
+        String(50), default="chat", nullable=False, index=True,
+    )
+    tools_called: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON list
+    tool_call_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    request_context: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),
@@ -32,5 +38,5 @@ class ChatRequestLogModel(Base):
     def __repr__(self) -> str:
         return (
             f"<ChatRequestLogModel(id={self.id}, model='{self.model}', "
-            f"provider='{self.provider}', cost={self.cost})>"
+            f"feature='{self.feature}', provider='{self.provider}', cost={self.cost})>"
         )

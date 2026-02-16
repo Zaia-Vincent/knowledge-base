@@ -1,0 +1,1411 @@
+# ══════════════════════════════════════════════════════════════════════
+# EMBEDDED TYPES — LAYERS 1 & 2
+# ══════════════════════════════════════════════════════════════════════
+# Embedded types are structured value objects that exist ONLY within
+# a parent concept. They have no independent identity — you never
+# classify an embedded type on its own, never search for one without
+# its parent, and never store one as a standalone record.
+#
+# However, in the DATABASE they should be stored in their own tables
+# for queryability. The ontology says "an Invoice has line_items of
+# type InvoiceLineItem[]." The database says "I store those in a
+# relational table with a foreign key back to the parent file."
+#
+# Organisation:
+#   §1  Foundation value types — reusable across all pillars
+#   §2  Entity embedded types — structures within Actors and Objects
+#   §3  Artifact embedded types — document line items
+#   §4  Process embedded types — structures within activities
+#
+# Each embedded type declares:
+#   - id:          unique identifier (PascalCase)
+#   - layer:       L1 or L2
+#   - description: what it is
+#   - applies_to:  which concepts use this type (as property type)
+#   - properties:  the structured fields
+#
+# The extraction engine uses applies_to to know which parent concepts
+# should trigger line-item extraction using this template.
+# ══════════════════════════════════════════════════════════════════════
+
+layer:
+  id: L1-L2
+  name: "Embedded Types"
+  version: "2.3.0"
+  locked: true
+  namespace: "embedded_types"
+
+
+# ════════════════════════════════════════════════════════════════════
+# §1  FOUNDATION VALUE TYPES
+# ════════════════════════════════════════════════════════════════════
+# Reusable structured values that appear across all pillars.
+# These replace loosely typed "string" properties with proper
+# structured extraction targets.
+
+embedded_types:
+
+  # ──────────────────────────────────────────────────────────────────
+  # PostalAddress
+  # ──────────────────────────────────────────────────────────────────
+  # Replaces the current "address: string" on Facility, PhysicalPlace,
+  # Organisation, and anywhere a physical address appears.
+
+  - id: "PostalAddress"
+    layer: L1
+    description: >
+      A structured postal address. Extractable from document headers,
+      footers, letterheads, and structured address blocks.
+    applies_to:
+      - "Person"
+      - "Organisation"
+      - "Facility"
+      - "PhysicalPlace"
+      - "Vendor"
+      - "Client"
+      - "LegalEntity"
+    synonyms:
+      - "adres"
+      - "Adresse"
+      - "adresse"
+      - "address"
+    properties:
+      - name: "street_line_1"
+        type: "string"
+        required: false
+        description: "Street name and house number"
+      - name: "street_line_2"
+        type: "string"
+        required: false
+        description: "Additional address line (building, floor, PO box)"
+      - name: "postal_code"
+        type: "string"
+        required: false
+        description: "Postal or ZIP code"
+      - name: "city"
+        type: "string"
+        required: false
+        description: "City or municipality"
+      - name: "state_province"
+        type: "string"
+        required: false
+        description: "State, province, or region"
+      - name: "country"
+        type: "string"
+        required: false
+        description: "Country (ISO 3166-1 alpha-2 preferred, e.g., BE, NL, DE)"
+      - name: "country_name"
+        type: "string"
+        required: false
+        description: "Country name in full (e.g., 'Belgium', 'België')"
+      - name: "address_type"
+        type: "enum"
+        values: ["Registered", "Postal", "Billing", "Shipping", "Visiting"]
+        required: false
+        description: "Purpose of this address"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # ContactMethod
+  # ──────────────────────────────────────────────────────────────────
+  # A person or organisation may have multiple contact methods.
+  # Currently Person has flat "email" and "phone" strings — this
+  # allows structured extraction of multiple contacts.
+
+  - id: "ContactMethod"
+    layer: L1
+    description: >
+      A way to contact a person or organisation: phone number, email
+      address, website, fax, or social media handle.
+    applies_to:
+      - "Person"
+      - "Organisation"
+      - "Vendor"
+      - "Client"
+      - "Department"
+    synonyms:
+      - "contactgegevens"
+      - "Kontaktdaten"
+      - "coordonnées"
+    properties:
+      - name: "method_type"
+        type: "enum"
+        values: ["Phone", "Mobile", "Email", "Fax", "Website", "LinkedIn", "Other"]
+        required: true
+        description: "Type of contact method"
+      - name: "value"
+        type: "string"
+        required: true
+        description: "The actual contact value (phone number, email address, URL)"
+      - name: "label"
+        type: "string"
+        required: false
+        description: "Free-text label (e.g., 'Main office', 'Sales dept', 'Personal')"
+      - name: "is_primary"
+        type: "boolean"
+        required: false
+        description: "Whether this is the primary contact method of this type"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # TimePeriodValue
+  # ──────────────────────────────────────────────────────────────────
+  # The value form of the L1 TimePeriod concept. Used wherever a
+  # date range is a property rather than a first-class entity.
+
+  - id: "TimePeriodValue"
+    layer: L1
+    description: >
+      A date range with an optional label. Used for reporting periods,
+      fiscal years, budget periods, pay periods, review periods.
+    applies_to:
+      - "Budget"
+      - "FinancialReport"
+      - "Report"
+      - "PaySlip"
+      - "PerformanceReview"
+      - "Contract"
+      - "Agreement"
+    synonyms:
+      - "periode"
+      - "Zeitraum"
+      - "période"
+      - "period"
+    properties:
+      - name: "start_date"
+        type: "date"
+        required: false
+        description: "Period start date (inclusive)"
+      - name: "end_date"
+        type: "date"
+        required: false
+        description: "Period end date (inclusive)"
+      - name: "label"
+        type: "string"
+        required: false
+        description: "Human-readable label (e.g., 'Q3 2024', 'FY2024', 'January 2025')"
+      - name: "period_type"
+        type: "enum"
+        values: ["Day", "Week", "Month", "Quarter", "HalfYear", "Year", "Custom"]
+        required: false
+        description: "Granularity of the period"
+      - name: "fiscal_year"
+        type: "string"
+        required: false
+        description: "Fiscal year this period belongs to (if applicable)"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # Dimensions
+  # ──────────────────────────────────────────────────────────────────
+  # Replaces "dimensions: string" on Good with a structured type.
+
+  - id: "Dimensions"
+    layer: L1
+    description: >
+      Physical dimensions of a tangible object: length, width, height,
+      with a unit of measurement.
+    applies_to:
+      - "Good"
+      - "PhysicalAsset"
+      - "Warehouse"
+    synonyms:
+      - "afmetingen"
+      - "Abmessungen"
+      - "dimensions"
+    properties:
+      - name: "length"
+        type: "decimal"
+        required: false
+        description: "Length"
+      - name: "width"
+        type: "decimal"
+        required: false
+        description: "Width"
+      - name: "height"
+        type: "decimal"
+        required: false
+        description: "Height"
+      - name: "unit"
+        type: "enum"
+        values: ["mm", "cm", "m", "in", "ft"]
+        required: false
+        description: "Unit of measurement"
+      - name: "weight_kg"
+        type: "decimal"
+        required: false
+        description: "Weight in kilograms (convenience field, also on parent)"
+      - name: "volume_m3"
+        type: "decimal"
+        required: false
+        description: "Calculated or measured volume in cubic metres"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # MoneyValue
+  # ──────────────────────────────────────────────────────────────────
+  # A precise monetary amount with currency. Used in line items
+  # and anywhere an amount + currency pair needs to be atomic.
+
+  - id: "MoneyValue"
+    layer: L1
+    description: >
+      A monetary amount with its currency code. Used in line items
+      and wherever a price, cost, or financial value appears as a
+      sub-field rather than a top-level property.
+    applies_to: []  # used within other embedded types, not directly on concepts
+    synonyms:
+      - "bedrag"
+      - "Betrag"
+      - "montant"
+    properties:
+      - name: "amount"
+        type: "decimal"
+        required: true
+        description: "Numeric amount"
+      - name: "currency"
+        type: "string"
+        required: false
+        description: "ISO 4217 currency code (e.g., EUR, USD)"
+
+
+  # ════════════════════════════════════════════════════════════════════
+  # §2  ENTITY EMBEDDED TYPES
+  # ════════════════════════════════════════════════════════════════════
+  # Structures that appear within Actor and Object concepts.
+
+  # ──────────────────────────────────────────────────────────────────
+  # BankAccount
+  # ──────────────────────────────────────────────────────────────────
+  # Vendors, organisations, and employees have bank accounts.
+  # Critical for payment processing and invoice matching.
+
+  - id: "BankAccount"
+    layer: L2
+    description: >
+      A bank account, typically extracted from invoice footers,
+      vendor master data, or payment instructions.
+    applies_to:
+      - "Vendor"
+      - "Organisation"
+      - "LegalEntity"
+      - "Client"
+      - "Employee"
+    synonyms:
+      - "bankrekening"
+      - "rekeningnummer"
+      - "Bankkonto"
+      - "compte bancaire"
+      - "bank details"
+    properties:
+      - name: "iban"
+        type: "string"
+        required: false
+        description: "IBAN (International Bank Account Number)"
+      - name: "bic"
+        type: "string"
+        required: false
+        description: "BIC/SWIFT code"
+      - name: "bank_name"
+        type: "string"
+        required: false
+        description: "Name of the bank"
+      - name: "account_holder"
+        type: "string"
+        required: false
+        description: "Name of the account holder"
+      - name: "account_type"
+        type: "enum"
+        values: ["Current", "Savings", "Escrow", "Other"]
+        required: false
+        description: "Type of account"
+      - name: "is_primary"
+        type: "boolean"
+        required: false
+        description: "Whether this is the primary payment account"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # TaxRegistration
+  # ──────────────────────────────────────────────────────────────────
+  # Organisations and vendors have one or more tax registrations
+  # (VAT, withholding tax, etc.). Extracted from invoice headers,
+  # vendor master data.
+
+  - id: "TaxRegistration"
+    layer: L2
+    description: >
+      A tax registration: VAT number, withholding tax ID, or other
+      fiscal identifier. Extracted from document headers and footers.
+    applies_to:
+      - "Organisation"
+      - "LegalEntity"
+      - "Vendor"
+      - "Client"
+    synonyms:
+      - "BTW-nummer"
+      - "USt-IdNr"
+      - "numéro de TVA"
+      - "tax ID"
+      - "VAT number"
+    properties:
+      - name: "tax_type"
+        type: "enum"
+        values: ["VAT", "WithholdingTax", "CorporateTax", "IncomeTax", "Other"]
+        required: true
+        description: "Type of tax registration"
+      - name: "registration_number"
+        type: "string"
+        required: true
+        description: "The tax registration number"
+      - name: "country"
+        type: "string"
+        required: false
+        description: "Country of registration (ISO 3166-1 alpha-2)"
+      - name: "verified"
+        type: "boolean"
+        required: false
+        description: "Whether this number has been verified (e.g., VIES check)"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # Certification
+  # ──────────────────────────────────────────────────────────────────
+  # An ISO certification, quality mark, or professional accreditation
+  # held by an organisation or person.
+
+  - id: "Certification"
+    layer: L2
+    description: >
+      A certification or accreditation: ISO 9001, ISO 14001, IATF 16949,
+      professional qualifications, industry accreditations.
+    applies_to:
+      - "Organisation"
+      - "Vendor"
+      - "Person"
+      - "Employee"
+      - "Facility"
+    synonyms:
+      - "certificering"
+      - "Zertifizierung"
+      - "certification"
+      - "accreditatie"
+    properties:
+      - name: "certification_name"
+        type: "string"
+        required: true
+        description: "Name of the certification (e.g., 'ISO 9001:2015')"
+      - name: "issuing_body"
+        type: "string"
+        required: false
+        description: "Organisation that issued the certification"
+      - name: "certificate_number"
+        type: "string"
+        required: false
+        description: "Certificate reference number"
+      - name: "issue_date"
+        type: "date"
+        required: false
+        description: "Date of issue"
+      - name: "expiry_date"
+        type: "date"
+        required: false
+        description: "Date of expiry"
+      - name: "scope"
+        type: "string"
+        required: false
+        description: "Scope of the certification"
+      - name: "status"
+        type: "enum"
+        values: ["Active", "Expired", "Suspended", "Revoked"]
+        required: false
+        description: "Current status"
+
+
+  # ════════════════════════════════════════════════════════════════════
+  # §3  ARTIFACT EMBEDDED TYPES — DOCUMENT LINE ITEMS
+  # ════════════════════════════════════════════════════════════════════
+  # Line items are the most important embedded types. They represent
+  # repeating rows within transactional documents and are the primary
+  # unit of spend analysis, three-way matching, and cost tracking.
+  #
+  # In the DATABASE, ALL line item types should be stored in a shared
+  # `extracted_line_items` table with the common columns
+  # (line_number, description, quantity, unit_price, line_total)
+  # plus a JSONB column for type-specific fields.
+
+  # ──────────────────────────────────────────────────────────────────
+  # InvoiceLineItem
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "InvoiceLineItem"
+    layer: L2
+    description: >
+      A single line item on an invoice or credit note: a product or
+      service billed, with quantity, price, and tax. The primary unit
+      of accounts payable analysis.
+    applies_to:
+      - "Invoice"
+      - "CreditNote"
+    synonyms:
+      - "factuurregel"
+      - "Rechnungsposition"
+      - "ligne de facture"
+      - "invoice line"
+    properties:
+      - name: "line_number"
+        type: "integer"
+        required: true
+        description: "Line sequence number"
+      - name: "description"
+        type: "string"
+        required: true
+        description: "Description of the goods or service"
+      - name: "quantity"
+        type: "decimal"
+        required: false
+        description: "Quantity invoiced"
+      - name: "unit_of_measure"
+        type: "string"
+        required: false
+        description: "Unit (e.g., 'stuks', 'uur', 'kg', 'EA', 'HR')"
+      - name: "unit_price"
+        type: "decimal"
+        required: false
+        description: "Price per unit (excl. tax)"
+      - name: "line_total"
+        type: "decimal"
+        required: false
+        description: "Total for this line (excl. tax)"
+      - name: "discount_percent"
+        type: "decimal"
+        required: false
+        description: "Discount applied as percentage"
+      - name: "discount_amount"
+        type: "decimal"
+        required: false
+        description: "Discount applied as absolute amount"
+      - name: "tax_rate"
+        type: "decimal"
+        required: false
+        description: "Applicable tax rate as percentage"
+      - name: "tax_amount"
+        type: "decimal"
+        required: false
+        description: "Tax amount for this line"
+      - name: "product_code"
+        type: "string"
+        required: false
+        description: "Product or item code referenced on this line"
+      - name: "product_name"
+        type: "string"
+        required: false
+        description: "Product name if different from description"
+      - name: "gl_account"
+        type: "string"
+        required: false
+        description: "General ledger account code for this line"
+      - name: "cost_centre"
+        type: "string"
+        required: false
+        description: "Cost centre this line is charged to"
+      - name: "po_reference"
+        type: "string"
+        required: false
+        description: "Purchase order line reference (for three-way matching)"
+      - name: "delivery_note_ref"
+        type: "string"
+        required: false
+        description: "Delivery note or goods receipt reference"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # OrderLineItem
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "OrderLineItem"
+    layer: L2
+    description: >
+      A line item on a purchase order or sales order: a product or
+      service ordered, with quantity, price, and delivery details.
+    applies_to:
+      - "PurchaseOrder"
+      - "SalesOrder"
+    synonyms:
+      - "orderregel"
+      - "bestelregel"
+      - "Bestellposition"
+      - "ligne de commande"
+      - "order line"
+    properties:
+      - name: "line_number"
+        type: "integer"
+        required: true
+        description: "Line sequence number"
+      - name: "description"
+        type: "string"
+        required: true
+        description: "Description of the goods or service ordered"
+      - name: "quantity"
+        type: "decimal"
+        required: false
+        description: "Quantity ordered"
+      - name: "unit_of_measure"
+        type: "string"
+        required: false
+        description: "Unit (e.g., 'stuks', 'uur', 'kg', 'EA')"
+      - name: "unit_price"
+        type: "decimal"
+        required: false
+        description: "Price per unit"
+      - name: "line_total"
+        type: "decimal"
+        required: false
+        description: "Total for this line"
+      - name: "product_code"
+        type: "string"
+        required: false
+        description: "Product or item code"
+      - name: "product_name"
+        type: "string"
+        required: false
+        description: "Product name"
+      - name: "requested_delivery_date"
+        type: "date"
+        required: false
+        description: "Requested delivery date for this line"
+      - name: "confirmed_delivery_date"
+        type: "date"
+        required: false
+        description: "Vendor-confirmed delivery date"
+      - name: "delivery_address"
+        type: "string"
+        required: false
+        description: "Delivery location for this line (if different from header)"
+      - name: "cost_centre"
+        type: "string"
+        required: false
+        description: "Cost centre this line is charged to"
+      - name: "gl_account"
+        type: "string"
+        required: false
+        description: "General ledger account"
+      - name: "status"
+        type: "enum"
+        values: ["Open", "Confirmed", "PartiallyDelivered", "Delivered", "Invoiced", "Cancelled"]
+        required: false
+        description: "Line item status"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # WorkOrderLineItem
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "WorkOrderLineItem"
+    layer: L2
+    description: >
+      A task, material, or labour entry on a work order. Represents
+      a discrete unit of work to be performed or a material to be
+      consumed.
+    applies_to:
+      - "WorkOrder"
+    synonyms:
+      - "werkorderregel"
+      - "taak"
+      - "materiaalregel"
+      - "Arbeitsschritt"
+      - "work order line"
+    properties:
+      - name: "line_number"
+        type: "integer"
+        required: true
+        description: "Line sequence number"
+      - name: "line_type"
+        type: "enum"
+        values: ["Labour", "Material", "Equipment", "Subcontract", "Other"]
+        required: false
+        description: "Type of work order line"
+      - name: "description"
+        type: "string"
+        required: true
+        description: "Description of the task or material"
+      - name: "quantity"
+        type: "decimal"
+        required: false
+        description: "Quantity (hours for labour, units for material)"
+      - name: "unit_of_measure"
+        type: "string"
+        required: false
+        description: "Unit (e.g., 'uur', 'stuks', 'kg')"
+      - name: "unit_cost"
+        type: "decimal"
+        required: false
+        description: "Cost per unit"
+      - name: "line_total"
+        type: "decimal"
+        required: false
+        description: "Total cost for this line"
+      - name: "assigned_to"
+        type: "string"
+        required: false
+        description: "Person or team assigned to this task"
+      - name: "planned_duration_hours"
+        type: "decimal"
+        required: false
+        description: "Planned time for this task (hours)"
+      - name: "actual_duration_hours"
+        type: "decimal"
+        required: false
+        description: "Actual time spent (hours)"
+      - name: "status"
+        type: "enum"
+        values: ["Planned", "InProgress", "Completed", "Skipped"]
+        required: false
+        description: "Line item status"
+      - name: "product_code"
+        type: "string"
+        required: false
+        description: "Material or spare part code"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # BudgetLineItem
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "BudgetLineItem"
+    layer: L2
+    description: >
+      A line item in a budget: a cost category with planned amount,
+      actual spend, and variance.
+    applies_to:
+      - "Budget"
+    synonyms:
+      - "begrotingsregel"
+      - "budget line"
+      - "Budgetposition"
+      - "ligne budgétaire"
+    properties:
+      - name: "line_number"
+        type: "integer"
+        required: false
+        description: "Line sequence number"
+      - name: "category"
+        type: "string"
+        required: true
+        description: "Budget category (e.g., 'Personnel', 'Travel', 'Software')"
+      - name: "subcategory"
+        type: "string"
+        required: false
+        description: "Budget subcategory"
+      - name: "gl_account"
+        type: "string"
+        required: false
+        description: "General ledger account"
+      - name: "cost_centre"
+        type: "string"
+        required: false
+        description: "Cost centre"
+      - name: "planned_amount"
+        type: "decimal"
+        required: false
+        description: "Budgeted amount"
+      - name: "actual_amount"
+        type: "decimal"
+        required: false
+        description: "Actual spend to date"
+      - name: "variance"
+        type: "decimal"
+        required: false
+        description: "Variance (actual minus planned; positive = overspend)"
+      - name: "variance_percent"
+        type: "decimal"
+        required: false
+        description: "Variance as percentage"
+      - name: "forecast_amount"
+        type: "decimal"
+        required: false
+        description: "Updated forecast for the full period"
+      - name: "notes"
+        type: "string"
+        required: false
+        description: "Explanation or commentary"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # FinancialReportLineItem
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "FinancialReportLineItem"
+    layer: L2
+    description: >
+      A line in a financial report: a P&L line item, balance sheet
+      entry, or cash flow component. Represents a single account
+      or category with its value(s).
+    applies_to:
+      - "FinancialReport"
+    synonyms:
+      - "rapportregel"
+      - "financiële post"
+      - "report line"
+    properties:
+      - name: "line_number"
+        type: "integer"
+        required: false
+        description: "Line or row number"
+      - name: "account_code"
+        type: "string"
+        required: false
+        description: "GL account code"
+      - name: "account_name"
+        type: "string"
+        required: true
+        description: "Account or category name"
+      - name: "section"
+        type: "string"
+        required: false
+        description: "Report section (e.g., 'Revenue', 'COGS', 'Assets', 'Liabilities')"
+      - name: "current_period"
+        type: "decimal"
+        required: false
+        description: "Value for the current reporting period"
+      - name: "prior_period"
+        type: "decimal"
+        required: false
+        description: "Value for the prior / comparison period"
+      - name: "ytd"
+        type: "decimal"
+        required: false
+        description: "Year-to-date value"
+      - name: "budget"
+        type: "decimal"
+        required: false
+        description: "Budgeted value"
+      - name: "variance"
+        type: "decimal"
+        required: false
+        description: "Variance (current vs budget or vs prior)"
+      - name: "is_subtotal"
+        type: "boolean"
+        required: false
+        description: "Whether this line is a subtotal/total row"
+      - name: "indent_level"
+        type: "integer"
+        required: false
+        description: "Indentation level in the report hierarchy"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # PaySlipComponent
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "PaySlipComponent"
+    layer: L2
+    description: >
+      A single component on a pay slip: an earning line (base salary,
+      overtime, bonus) or a deduction line (tax, social security,
+      pension, meal vouchers).
+    applies_to:
+      - "PaySlip"
+    synonyms:
+      - "looncomponent"
+      - "loonregel"
+      - "Gehaltskomponente"
+      - "composante salariale"
+      - "pay component"
+    properties:
+      - name: "line_number"
+        type: "integer"
+        required: false
+        description: "Line sequence number"
+      - name: "component_type"
+        type: "enum"
+        values: ["Earning", "Deduction", "EmployerContribution", "Reimbursement", "NetPayment"]
+        required: true
+        description: "Whether this is an earning, deduction, or employer contribution"
+      - name: "description"
+        type: "string"
+        required: true
+        description: "Component description (e.g., 'Basissalaris', 'RSZ-bijdrage')"
+      - name: "code"
+        type: "string"
+        required: false
+        description: "Payroll code for this component"
+      - name: "quantity"
+        type: "decimal"
+        required: false
+        description: "Quantity (hours, days, units)"
+      - name: "rate"
+        type: "decimal"
+        required: false
+        description: "Rate per unit"
+      - name: "amount"
+        type: "decimal"
+        required: true
+        description: "Amount for this component"
+      - name: "ytd_amount"
+        type: "decimal"
+        required: false
+        description: "Year-to-date cumulative amount"
+      - name: "is_taxable"
+        type: "boolean"
+        required: false
+        description: "Whether this component is subject to income tax"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # ContractClause
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "ContractClause"
+    layer: L2
+    description: >
+      A key clause or term in a contract or agreement. Not every
+      sentence — only commercially significant provisions that
+      affect obligations, liability, or cost.
+    applies_to:
+      - "Contract"
+      - "Agreement"
+    synonyms:
+      - "clausule"
+      - "contractbepaling"
+      - "Klausel"
+      - "clause contractuelle"
+      - "contract term"
+    properties:
+      - name: "clause_number"
+        type: "string"
+        required: false
+        description: "Article or section number (e.g., '3.2', 'Article 7')"
+      - name: "clause_type"
+        type: "enum"
+        values:
+          - "Payment"
+          - "Delivery"
+          - "Warranty"
+          - "Liability"
+          - "Indemnification"
+          - "Termination"
+          - "Confidentiality"
+          - "NonCompete"
+          - "IntellectualProperty"
+          - "ForceMAjeure"
+          - "DisputeResolution"
+          - "DataProtection"
+          - "Insurance"
+          - "Penalty"
+          - "SLA"
+          - "PriceEscalation"
+          - "Other"
+        required: false
+        description: "Classification of the clause type"
+      - name: "title"
+        type: "string"
+        required: false
+        description: "Clause title or heading"
+      - name: "summary"
+        type: "string"
+        required: true
+        description: "AI-generated summary of the clause in plain language"
+      - name: "monetary_value"
+        type: "decimal"
+        required: false
+        description: "Financial amount mentioned in the clause (penalty cap, liability limit, etc.)"
+      - name: "duration_days"
+        type: "integer"
+        required: false
+        description: "Time period mentioned in the clause (notice period, warranty period, etc.)"
+      - name: "risk_level"
+        type: "enum"
+        values: ["Low", "Medium", "High"]
+        required: false
+        description: "AI-assessed risk level of this clause"
+      - name: "source_text"
+        type: "string"
+        required: false
+        description: "The original text of the clause (for review)"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # ContractParty
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "ContractParty"
+    layer: L2
+    description: >
+      A party to a contract or agreement, with their role, signatory
+      name, and organisation details as extracted from the document.
+    applies_to:
+      - "Contract"
+      - "Agreement"
+    synonyms:
+      - "contractpartij"
+      - "Vertragspartei"
+      - "partie contractante"
+      - "contracting party"
+    properties:
+      - name: "party_role"
+        type: "enum"
+        values: ["Buyer", "Seller", "Supplier", "Customer", "Licensor", "Licensee", "Landlord", "Tenant", "Employer", "Employee", "Other"]
+        required: false
+        description: "Role of this party in the contract"
+      - name: "organisation_name"
+        type: "string"
+        required: true
+        description: "Legal name of the organisation"
+      - name: "registration_number"
+        type: "string"
+        required: false
+        description: "Company registration number (KvK, BCE, etc.)"
+      - name: "vat_number"
+        type: "string"
+        required: false
+        description: "VAT number"
+      - name: "signatory_name"
+        type: "string"
+        required: false
+        description: "Name of the person who signed"
+      - name: "signatory_title"
+        type: "string"
+        required: false
+        description: "Title or function of the signatory"
+      - name: "address"
+        type: "string"
+        required: false
+        description: "Registered address as stated in the contract"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # SpecificationRequirement
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "SpecificationRequirement"
+    layer: L2
+    description: >
+      A single requirement, criterion, or acceptance standard in a
+      specification document: a measurable requirement with a
+      target value, tolerance, and test method.
+    applies_to:
+      - "Specification"
+    synonyms:
+      - "specificatie-eis"
+      - "vereiste"
+      - "Anforderung"
+      - "exigence"
+      - "requirement"
+    properties:
+      - name: "requirement_id"
+        type: "string"
+        required: false
+        description: "Requirement identifier (e.g., 'REQ-001', '3.2.1')"
+      - name: "description"
+        type: "string"
+        required: true
+        description: "Description of the requirement"
+      - name: "category"
+        type: "enum"
+        values: ["Functional", "Performance", "Material", "Dimensional", "Environmental", "Safety", "Regulatory", "Other"]
+        required: false
+        description: "Requirement category"
+      - name: "target_value"
+        type: "string"
+        required: false
+        description: "Target or nominal value"
+      - name: "tolerance_min"
+        type: "string"
+        required: false
+        description: "Minimum acceptable value"
+      - name: "tolerance_max"
+        type: "string"
+        required: false
+        description: "Maximum acceptable value"
+      - name: "unit"
+        type: "string"
+        required: false
+        description: "Unit of measurement"
+      - name: "test_method"
+        type: "string"
+        required: false
+        description: "Test or verification method (e.g., 'ISO 6892-1', 'Visual inspection')"
+      - name: "priority"
+        type: "enum"
+        values: ["Must", "Should", "Could", "Optional"]
+        required: false
+        description: "MoSCoW priority of this requirement"
+      - name: "compliance_status"
+        type: "enum"
+        values: ["Open", "Compliant", "NonCompliant", "Waived", "NotTested"]
+        required: false
+        description: "Current compliance status"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # PerformanceObjective
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "PerformanceObjective"
+    layer: L2
+    description: >
+      A goal or objective on a performance review: a target with
+      a weighting, self-assessment, and manager assessment.
+    applies_to:
+      - "PerformanceReview"
+    synonyms:
+      - "doelstelling"
+      - "objectief"
+      - "Ziel"
+      - "objectif"
+      - "KPI"
+    properties:
+      - name: "objective_number"
+        type: "integer"
+        required: false
+        description: "Sequence number"
+      - name: "title"
+        type: "string"
+        required: true
+        description: "Objective title"
+      - name: "description"
+        type: "string"
+        required: false
+        description: "Detailed description of the objective"
+      - name: "category"
+        type: "enum"
+        values: ["Business", "Personal", "Learning", "TeamContribution", "Other"]
+        required: false
+        description: "Objective category"
+      - name: "weight_percent"
+        type: "decimal"
+        required: false
+        description: "Weighting of this objective as percentage"
+      - name: "target"
+        type: "string"
+        required: false
+        description: "Target or success criterion"
+      - name: "self_rating"
+        type: "enum"
+        values: ["ExceedsExpectations", "MeetsExpectations", "NeedsImprovement", "Unsatisfactory"]
+        required: false
+        description: "Employee's self-assessment"
+      - name: "manager_rating"
+        type: "enum"
+        values: ["ExceedsExpectations", "MeetsExpectations", "NeedsImprovement", "Unsatisfactory"]
+        required: false
+        description: "Manager's assessment"
+      - name: "comments"
+        type: "string"
+        required: false
+        description: "Review comments"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # EmailAttachment
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "EmailAttachment"
+    layer: L2
+    description: >
+      Metadata about a file attached to an email. The attachment
+      itself may be extracted and classified as a separate file.
+    applies_to:
+      - "Email"
+    synonyms:
+      - "bijlage"
+      - "Anhang"
+      - "pièce jointe"
+      - "attachment"
+    properties:
+      - name: "filename"
+        type: "string"
+        required: true
+        description: "Attachment filename"
+      - name: "file_type"
+        type: "string"
+        required: false
+        description: "File extension or MIME type"
+      - name: "file_size_bytes"
+        type: "integer"
+        required: false
+        description: "File size in bytes"
+      - name: "extracted_as"
+        type: "string"
+        required: false
+        description: "If the attachment was extracted and classified separately, the file ID reference"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # TicketEntry
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "TicketEntry"
+    layer: L2
+    description: >
+      A single entry in a support ticket's conversation thread:
+      a comment, status change, or assignment.
+    applies_to:
+      - "Ticket"
+    synonyms:
+      - "ticketnotitie"
+      - "opmerking"
+      - "Kommentar"
+      - "commentaire"
+      - "ticket comment"
+    properties:
+      - name: "entry_number"
+        type: "integer"
+        required: false
+        description: "Sequence number in the thread"
+      - name: "entry_type"
+        type: "enum"
+        values: ["Comment", "StatusChange", "Assignment", "Escalation", "Resolution", "Reopen"]
+        required: false
+        description: "Type of entry"
+      - name: "author"
+        type: "string"
+        required: false
+        description: "Person who made this entry"
+      - name: "timestamp"
+        type: "datetime"
+        required: false
+        description: "When this entry was made"
+      - name: "content"
+        type: "string"
+        required: false
+        description: "Text content of the entry"
+      - name: "from_status"
+        type: "string"
+        required: false
+        description: "Previous status (for status change entries)"
+      - name: "to_status"
+        type: "string"
+        required: false
+        description: "New status (for status change entries)"
+      - name: "is_internal"
+        type: "boolean"
+        required: false
+        description: "Whether this is an internal note (not visible to customer)"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # ReceiptLineItem
+  # ──────────────────────────────────────────────────────────────────
+
+  - id: "ReceiptLineItem"
+    layer: L2
+    description: >
+      A line item on a receipt: a purchased item with quantity and
+      price. Simpler than InvoiceLineItem — no PO references or
+      GL accounts.
+    applies_to:
+      - "Receipt"
+    synonyms:
+      - "bonregel"
+      - "kassabon item"
+      - "receipt item"
+    properties:
+      - name: "line_number"
+        type: "integer"
+        required: false
+        description: "Line sequence number"
+      - name: "description"
+        type: "string"
+        required: true
+        description: "Item description"
+      - name: "quantity"
+        type: "decimal"
+        required: false
+        description: "Quantity"
+      - name: "unit_price"
+        type: "decimal"
+        required: false
+        description: "Price per unit"
+      - name: "line_total"
+        type: "decimal"
+        required: false
+        description: "Total for this line"
+      - name: "tax_rate"
+        type: "decimal"
+        required: false
+        description: "Tax rate"
+      - name: "category"
+        type: "string"
+        required: false
+        description: "Expense category (e.g., 'Travel', 'Meals', 'Office supplies')"
+
+
+  # ════════════════════════════════════════════════════════════════════
+  # §4  PROCESS EMBEDDED TYPES
+  # ════════════════════════════════════════════════════════════════════
+
+  # ──────────────────────────────────────────────────────────────────
+  # ChecklistItem
+  # ──────────────────────────────────────────────────────────────────
+  # Replaces "checklist: string[]" on ReviewActivity with a
+  # structured type that tracks completion.
+
+  - id: "ChecklistItem"
+    layer: L2
+    description: >
+      A single item on a review or inspection checklist, with a
+      checked/unchecked status and optional remarks.
+    applies_to:
+      - "ReviewActivity"
+      - "ApprovalActivity"
+    synonyms:
+      - "checklist item"
+      - "controlpunt"
+      - "Prüfpunkt"
+      - "point de contrôle"
+    properties:
+      - name: "item_number"
+        type: "integer"
+        required: false
+        description: "Sequence number"
+      - name: "description"
+        type: "string"
+        required: true
+        description: "What needs to be checked"
+      - name: "is_checked"
+        type: "boolean"
+        required: false
+        description: "Whether this item passed / was completed"
+      - name: "result"
+        type: "enum"
+        values: ["Pass", "Fail", "NA", "Observation"]
+        required: false
+        description: "Result of the check"
+      - name: "remarks"
+        type: "string"
+        required: false
+        description: "Auditor/reviewer remarks"
+      - name: "evidence_ref"
+        type: "string"
+        required: false
+        description: "Reference to supporting evidence or document"
+      - name: "is_mandatory"
+        type: "boolean"
+        required: false
+        description: "Whether this check is mandatory for approval"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # ProjectMilestone
+  # ──────────────────────────────────────────────────────────────────
+  # A milestone within a project, distinct from MilestoneEvent
+  # (which is a standalone event). This is an embedded list within
+  # the project record.
+
+  - id: "ProjectMilestone"
+    layer: L2
+    description: >
+      A planned milestone within a project: a date-bound deliverable
+      or gate with planned vs actual dates.
+    applies_to:
+      - "Project"
+      - "InternalProject"
+      - "ClientProject"
+    synonyms:
+      - "projectmijlpaal"
+      - "Projektmeilenstein"
+      - "jalon"
+      - "milestone"
+    properties:
+      - name: "milestone_number"
+        type: "integer"
+        required: false
+        description: "Sequence number"
+      - name: "name"
+        type: "string"
+        required: true
+        description: "Milestone name"
+      - name: "description"
+        type: "string"
+        required: false
+        description: "What this milestone represents"
+      - name: "planned_date"
+        type: "date"
+        required: false
+        description: "Planned date"
+      - name: "actual_date"
+        type: "date"
+        required: false
+        description: "Actual date achieved"
+      - name: "status"
+        type: "enum"
+        values: ["Upcoming", "OnTrack", "AtRisk", "Delayed", "Completed", "Cancelled"]
+        required: false
+        description: "Current status"
+      - name: "deliverable"
+        type: "string"
+        required: false
+        description: "Associated deliverable"
+      - name: "owner"
+        type: "string"
+        required: false
+        description: "Person responsible for this milestone"
+
+
+  # ──────────────────────────────────────────────────────────────────
+  # RiskEntry
+  # ──────────────────────────────────────────────────────────────────
+  # Projects and processes can have associated risks documented
+  # in a risk register or risk section of a document.
+
+  - id: "RiskEntry"
+    layer: L2
+    description: >
+      A risk identified in a project, process, or compliance
+      context. Extracted from risk registers, project plans,
+      and audit reports.
+    applies_to:
+      - "Project"
+      - "InternalProject"
+      - "ClientProject"
+      - "BusinessProcess"
+      - "ComplianceEvent"
+      - "Report"
+    synonyms:
+      - "risico"
+      - "Risiko"
+      - "risque"
+      - "risk"
+    properties:
+      - name: "risk_id"
+        type: "string"
+        required: false
+        description: "Risk identifier (e.g., 'R-001')"
+      - name: "description"
+        type: "string"
+        required: true
+        description: "Description of the risk"
+      - name: "category"
+        type: "enum"
+        values: ["Financial", "Operational", "Legal", "Reputational", "Technical", "Safety", "Environmental", "Compliance", "Other"]
+        required: false
+        description: "Risk category"
+      - name: "probability"
+        type: "enum"
+        values: ["VeryLow", "Low", "Medium", "High", "VeryHigh"]
+        required: false
+        description: "Likelihood of occurrence"
+      - name: "impact"
+        type: "enum"
+        values: ["VeryLow", "Low", "Medium", "High", "VeryHigh"]
+        required: false
+        description: "Impact if the risk materialises"
+      - name: "risk_score"
+        type: "integer"
+        required: false
+        description: "Calculated risk score (probability × impact)"
+      - name: "mitigation"
+        type: "string"
+        required: false
+        description: "Mitigation strategy or action"
+      - name: "owner"
+        type: "string"
+        required: false
+        description: "Risk owner"
+      - name: "status"
+        type: "enum"
+        values: ["Open", "Mitigated", "Accepted", "Closed", "Materialised"]
+        required: false
+        description: "Current risk status"

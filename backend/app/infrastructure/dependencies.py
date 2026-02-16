@@ -6,14 +6,30 @@ from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.application.services import ArticleService, ChatCompletionService, ClientRecordService
+from app.application.interfaces.llm_client import LLMClient
+from app.application.services import (
+    ArticleService,
+    ChatCompletionService,
+    ClassificationService,
+    ClientRecordService,
+    FileProcessingService,
+    LLMUsageLogger,
+    MetadataExtractionService,
+    OntologyService,
+)
 from app.infrastructure.database.session import get_db_session
 from app.infrastructure.database.repositories import (
     SQLAlchemyArticleRepository,
     SQLAlchemyChatRequestLogRepository,
     SQLAlchemyClientRecordRepository,
+    SQLAlchemyFileRepository,
+    SQLAlchemyOntologyRepository,
 )
+from app.infrastructure.extractors.multi_format_text_extractor import MultiFormatTextExtractor
+from app.infrastructure.llm.openrouter_llm_client import OpenRouterLLMClient
 from app.infrastructure.openrouter import OpenRouterClient
+from app.infrastructure.storage.local_file_storage import LocalFileStorage
+
 
 
 async def get_article_service(
@@ -27,11 +43,7 @@ async def get_article_service(
 async def get_chat_completion_service(
     session: AsyncSession = Depends(get_db_session),
 ) -> AsyncGenerator[ChatCompletionService, None]:
-    """Provides a ChatCompletionService with OpenRouter as the default provider.
-
-    The provider can be swapped out for Groq, OpenAI, etc. by creating
-    alternative dependency functions or using a provider registry.
-    """
+    """Provides a ChatCompletionService with OpenRouter as the default provider."""
     settings = get_settings()
     provider = OpenRouterClient(
         api_key=settings.openrouter_api_key,
@@ -39,7 +51,12 @@ async def get_chat_completion_service(
         app_name=settings.openrouter_app_name,
     )
     log_repository = SQLAlchemyChatRequestLogRepository(session)
-    yield ChatCompletionService(provider=provider, log_repository=log_repository)
+    usage_logger = LLMUsageLogger(log_repository)
+    yield ChatCompletionService(
+        provider=provider,
+        log_repository=log_repository,
+        usage_logger=usage_logger,
+    )
 
 
 async def get_client_record_service(
@@ -48,4 +65,73 @@ async def get_client_record_service(
     """Provides a ClientRecordService instance with its repository wired up."""
     repository = SQLAlchemyClientRecordRepository(session)
     yield ClientRecordService(repository)
+
+
+async def get_ontology_service(
+    session: AsyncSession = Depends(get_db_session),
+) -> AsyncGenerator[OntologyService, None]:
+    """Provides an OntologyService with the ontology repository wired up."""
+    repository = SQLAlchemyOntologyRepository(session)
+    yield OntologyService(repository)
+
+
+async def get_file_processing_service(
+    session: AsyncSession = Depends(get_db_session),
+) -> AsyncGenerator[FileProcessingService, None]:
+    """Provides a FileProcessingService with storage, extraction, classification, and metadata."""
+    settings = get_settings()
+
+    # File infrastructure
+    file_repository = SQLAlchemyFileRepository(session)
+    storage = LocalFileStorage(upload_dir=settings.upload_dir)
+    extractor = MultiFormatTextExtractor()
+
+    # Classification & extraction infrastructure (shared ontology repo + LLM client)
+    ontology_repository = SQLAlchemyOntologyRepository(session)
+
+    # Shared usage logger for all LLM-consuming services
+    log_repository = SQLAlchemyChatRequestLogRepository(session)
+    usage_logger = LLMUsageLogger(log_repository)
+
+    llm_client: LLMClient | None = None
+    try:
+        openrouter = OpenRouterClient(
+            api_key=settings.openrouter_api_key,
+            base_url=settings.openrouter_base_url,
+            app_name=settings.openrouter_app_name,
+        )
+        llm_client = OpenRouterLLMClient(
+            openrouter_client=openrouter,
+            model=settings.classification_model,
+            pdf_model=settings.pdf_processing_model,
+        )
+    except Exception:
+        pass  # LLM not configured — services will work without it
+
+    classifier = ClassificationService(
+        ontology_repo=ontology_repository,
+        llm_client=llm_client,
+        usage_logger=usage_logger,
+    )
+
+    metadata_extractor = MetadataExtractionService(
+        ontology_repo=ontology_repository,
+        llm_client=llm_client,
+        usage_logger=usage_logger,
+    )
+
+    ontology_service = OntologyService(ontology_repository)
+
+    yield FileProcessingService(
+        file_repository=file_repository,
+        file_storage=storage,
+        text_extractor=extractor,
+        classification_service=classifier,
+        metadata_extractor=metadata_extractor,
+        llm_client=llm_client,
+        ontology_repo=ontology_repository,
+        ontology_service=ontology_service,
+        usage_logger=usage_logger,
+    )
+
 
