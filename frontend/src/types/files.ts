@@ -40,6 +40,8 @@ export interface ProcessedFileSummary {
     classification_concept_id: string | null;
     classification_confidence: number | null;
     concept_label: string | null;
+    origin_file_id: string | null;
+    page_range: string | null;
     uploaded_at: string;
     processed_at: string | null;
     error_message: string | null;

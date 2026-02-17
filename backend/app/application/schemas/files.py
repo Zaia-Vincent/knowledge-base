@@ -45,6 +45,8 @@ class ProcessedFileSummarySchema(BaseModel):
     classification_concept_id: str | None = None
     classification_confidence: float | None = None
     concept_label: str | None = None
+    origin_file_id: str | None = None
+    page_range: str | None = None
     uploaded_at: str
     processed_at: str | None = None
     error_message: str | None = None

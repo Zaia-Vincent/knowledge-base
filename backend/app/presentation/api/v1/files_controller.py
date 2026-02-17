@@ -36,6 +36,8 @@ def _to_summary(pf: ProcessedFile) -> ProcessedFileSummarySchema:
         classification_concept_id=pf.classification.primary_concept_id if pf.classification else None,
         classification_confidence=pf.classification.confidence if pf.classification else None,
         concept_label=None,  # Will be populated when concept labels are available
+        origin_file_id=pf.origin_file_id,
+        page_range=pf.page_range,
         uploaded_at=pf.uploaded_at.isoformat(),
         processed_at=pf.processed_at.isoformat() if pf.processed_at else None,
         error_message=pf.error_message,
