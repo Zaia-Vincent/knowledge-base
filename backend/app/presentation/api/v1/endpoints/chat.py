@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 from app.application.schemas import (
     ChatCompletionRequest,
     ChatCompletionResponse,
-    ChatRequestLogResponse,
+    ServiceRequestLogResponse,
     TokenUsageResponse,
 )
 from app.application.services import ChatCompletionService
@@ -84,20 +84,20 @@ async def chat_completion_stream(
     )
 
 
-@router.get("/logs", response_model=list[ChatRequestLogResponse])
+@router.get("/logs", response_model=list[ServiceRequestLogResponse])
 async def get_chat_logs(
     skip: int = 0,
     limit: int = 100,
     service: ChatCompletionService = Depends(get_chat_completion_service),
-) -> list[ChatRequestLogResponse]:
-    """Retrieve chat request logs for monitoring.
+) -> list[ServiceRequestLogResponse]:
+    """Retrieve service request logs for monitoring.
 
     Returns a paginated list of all chat completion requests,
     ordered by most recent first, including token usage and cost.
     """
     logs = await service.get_logs(skip=skip, limit=limit)
     return [
-        ChatRequestLogResponse(
+        ServiceRequestLogResponse(
             id=log.id,
             model=log.model,
             provider=log.provider,

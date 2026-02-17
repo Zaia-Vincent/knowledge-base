@@ -1,5 +1,5 @@
 from .article import ArticleModel
-from .chat_request_log import ChatRequestLogModel
+from .service_request_log import ServiceRequestLogModel
 from .client_record import ClientRecordModel
 from .ontology_models import (
     ConceptModel,
@@ -15,7 +15,7 @@ from .file_models import ProcessedFileModel
 
 __all__ = [
     "ArticleModel",
-    "ChatRequestLogModel",
+    "ServiceRequestLogModel",
     "ClientRecordModel",
     "ConceptModel",
     "ConceptPropertyModel",

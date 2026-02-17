@@ -1,4 +1,4 @@
-"""SQLAlchemy ORM model for chat request logs."""
+"""SQLAlchemy ORM model for service request logs."""
 
 from datetime import datetime, timezone
 
@@ -8,10 +8,10 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.infrastructure.database.base import Base
 
 
-class ChatRequestLogModel(Base):
-    """ORM model — maps to the 'chat_request_logs' table."""
+class ServiceRequestLogModel(Base):
+    """ORM model — maps to the 'service_request_logs' table."""
 
-    __tablename__ = "chat_request_logs"
+    __tablename__ = "service_request_logs"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     model: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
@@ -37,6 +37,6 @@ class ChatRequestLogModel(Base):
 
     def __repr__(self) -> str:
         return (
-            f"<ChatRequestLogModel(id={self.id}, model='{self.model}', "
+            f"<ServiceRequestLogModel(id={self.id}, model='{self.model}', "
             f"feature='{self.feature}', provider='{self.provider}', cost={self.cost})>"
         )

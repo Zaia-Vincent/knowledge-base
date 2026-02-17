@@ -5,13 +5,13 @@ import pytest
 from app.application.schemas.chat import ChatCompletionRequest, ChatMessageSchema
 from app.application.services.chat_completion_service import ChatCompletionService
 from app.application.interfaces.chat_provider import ChatProvider
-from app.application.interfaces.chat_request_log_repository import (
-    ChatRequestLogRepository,
+from app.application.interfaces.service_request_log_repository import (
+    ServiceRequestLogRepository,
 )
 from app.domain.entities import (
     ChatMessage,
     ChatCompletionResult,
-    ChatRequestLog,
+    ServiceRequestLog,
     TokenUsage,
 )
 from app.domain.exceptions import ChatProviderError
@@ -65,14 +65,14 @@ class FakeChatProvider(ChatProvider):
             yield chunk
 
 
-class FakeChatRequestLogRepository(ChatRequestLogRepository):
+class FakeServiceRequestLogRepository(ServiceRequestLogRepository):
     """In-memory fake repository for unit testing."""
 
     def __init__(self):
-        self._logs: list[ChatRequestLog] = []
+        self._logs: list[ServiceRequestLog] = []
         self._next_id = 1
 
-    async def create(self, log: ChatRequestLog) -> ChatRequestLog:
+    async def create(self, log: ServiceRequestLog) -> ServiceRequestLog:
         log.id = self._next_id
         self._next_id += 1
         self._logs.append(log)
@@ -80,7 +80,7 @@ class FakeChatRequestLogRepository(ChatRequestLogRepository):
 
     async def get_all(
         self, *, skip: int = 0, limit: int = 100
-    ) -> list[ChatRequestLog]:
+    ) -> list[ServiceRequestLog]:
         return list(reversed(self._logs))[skip : skip + limit]
 
 
@@ -114,7 +114,7 @@ async def test_complete_returns_result():
     """Non-streaming call returns correct result."""
     expected = _make_result()
     provider = FakeChatProvider(result=expected)
-    log_repo = FakeChatRequestLogRepository()
+    log_repo = FakeServiceRequestLogRepository()
     service = ChatCompletionService(provider=provider, log_repository=log_repo)
 
     result = await service.complete(_make_request())
@@ -129,7 +129,7 @@ async def test_complete_logs_request():
     """Non-streaming call logs the request with usage and cost."""
     expected = _make_result()
     provider = FakeChatProvider(result=expected)
-    log_repo = FakeChatRequestLogRepository()
+    log_repo = FakeServiceRequestLogRepository()
     service = ChatCompletionService(provider=provider, log_repository=log_repo)
 
     await service.complete(_make_request())
@@ -151,7 +151,7 @@ async def test_complete_provider_error_logged():
     """Provider errors are logged with error status."""
     error = ChatProviderError(provider="fake", status_code=429, message="Rate limited")
     provider = FakeChatProvider(error=error)
-    log_repo = FakeChatRequestLogRepository()
+    log_repo = FakeServiceRequestLogRepository()
     service = ChatCompletionService(provider=provider, log_repository=log_repo)
 
     with pytest.raises(ChatProviderError):
@@ -172,7 +172,7 @@ async def test_stream_yields_chunks():
         "data: [DONE]",
     ]
     provider = FakeChatProvider(stream_chunks=chunks)
-    log_repo = FakeChatRequestLogRepository()
+    log_repo = FakeServiceRequestLogRepository()
     service = ChatCompletionService(provider=provider, log_repository=log_repo)
 
     received = []
@@ -189,7 +189,7 @@ async def test_stream_logs_after_completion():
     """Streaming call logs the request after the stream ends."""
     chunks = ['data: {"choices":[{"delta":{"content":"Hi"}}]}']
     provider = FakeChatProvider(stream_chunks=chunks)
-    log_repo = FakeChatRequestLogRepository()
+    log_repo = FakeServiceRequestLogRepository()
     service = ChatCompletionService(provider=provider, log_repository=log_repo)
 
     async for _ in service.stream(_make_request()):
@@ -204,7 +204,7 @@ async def test_get_logs_returns_entries():
     """Log retrieval returns stored entries."""
     expected = _make_result()
     provider = FakeChatProvider(result=expected)
-    log_repo = FakeChatRequestLogRepository()
+    log_repo = FakeServiceRequestLogRepository()
     service = ChatCompletionService(provider=provider, log_repository=log_repo)
 
     await service.complete(_make_request("model-1"))
@@ -221,7 +221,7 @@ async def test_multimodal_message_conversion():
 
     expected = _make_result()
     provider = FakeChatProvider(result=expected)
-    log_repo = FakeChatRequestLogRepository()
+    log_repo = FakeServiceRequestLogRepository()
     service = ChatCompletionService(provider=provider, log_repository=log_repo)
 
     request = ChatCompletionRequest(

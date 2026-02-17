@@ -55,6 +55,15 @@ class FakeFileRepository(FileRepository):
             return True
         return False
 
+    async def search(
+        self,
+        concept_ids=None,
+        metadata_filters=None,
+        text_query=None,
+        limit=50,
+    ) -> list[ProcessedFile]:
+        return list(self._files.values())[:limit]
+
 
 # ── Fixtures ─────────────────────────────────────────────────────────
 

@@ -5,15 +5,15 @@ import logging
 from collections.abc import AsyncIterator
 
 from app.application.interfaces.chat_provider import ChatProvider
-from app.application.interfaces.chat_request_log_repository import (
-    ChatRequestLogRepository,
+from app.application.interfaces.service_request_log_repository import (
+    ServiceRequestLogRepository,
 )
 from app.application.services.llm_usage_logger import LLMUsageLogger
 from app.domain.entities import (
     ChatMessage,
     ContentPart,
     ChatCompletionResult,
-    ChatRequestLog,
+    ServiceRequestLog,
 )
 from app.domain.entities.chat_message import TokenUsage
 from app.domain.exceptions import ChatProviderError
@@ -33,7 +33,7 @@ class ChatCompletionService:
     def __init__(
         self,
         provider: ChatProvider,
-        log_repository: ChatRequestLogRepository,
+        log_repository: ServiceRequestLogRepository,
         usage_logger: LLMUsageLogger | None = None,
     ):
         self._provider = provider
@@ -189,6 +189,7 @@ class ChatCompletionService:
                 context["prompt_tokens"] = usage.get("prompt_tokens", 0)
                 context["completion_tokens"] = usage.get("completion_tokens", 0)
                 context["total_tokens"] = usage.get("total_tokens", 0)
+                context["cost"] = usage.get("cost")
             if "model" in data:
                 context["model_used"] = data["model"]
         except (json.JSONDecodeError, KeyError):
@@ -196,7 +197,7 @@ class ChatCompletionService:
 
     async def get_logs(
         self, *, skip: int = 0, limit: int = 100
-    ) -> list[ChatRequestLog]:
-        """Retrieve chat request logs for monitoring."""
+    ) -> list[ServiceRequestLog]:
+        """Retrieve service request logs for monitoring."""
         return await self._log_repository.get_all(skip=skip, limit=limit)
 

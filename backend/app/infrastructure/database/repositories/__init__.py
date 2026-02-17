@@ -1,12 +1,12 @@
 from .article_repository import SQLAlchemyArticleRepository
-from .chat_request_log_repository import SQLAlchemyChatRequestLogRepository
+from .service_request_log_repository import SQLAlchemyServiceRequestLogRepository
 from .client_record_repository import SQLAlchemyClientRecordRepository
 from .ontology_repository import SQLAlchemyOntologyRepository
 from .file_repository import SQLAlchemyFileRepository
 
 __all__ = [
     "SQLAlchemyArticleRepository",
-    "SQLAlchemyChatRequestLogRepository",
+    "SQLAlchemyServiceRequestLogRepository",
     "SQLAlchemyClientRecordRepository",
     "SQLAlchemyOntologyRepository",
     "SQLAlchemyFileRepository",

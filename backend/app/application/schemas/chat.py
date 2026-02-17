@@ -80,8 +80,8 @@ class ChatCompletionResponse(BaseModel):
     images: list[dict[str, str]] = Field(default_factory=list)
 
 
-class ChatRequestLogResponse(BaseModel):
-    """Response schema for chat request log entries."""
+class ServiceRequestLogResponse(BaseModel):
+    """Response schema for service request log entries."""
 
     id: int
     model: str

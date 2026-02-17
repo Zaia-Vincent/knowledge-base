@@ -20,7 +20,7 @@ from app.application.services import (
 from app.infrastructure.database.session import get_db_session
 from app.infrastructure.database.repositories import (
     SQLAlchemyArticleRepository,
-    SQLAlchemyChatRequestLogRepository,
+    SQLAlchemyServiceRequestLogRepository,
     SQLAlchemyClientRecordRepository,
     SQLAlchemyFileRepository,
     SQLAlchemyOntologyRepository,
@@ -50,7 +50,7 @@ async def get_chat_completion_service(
         base_url=settings.openrouter_base_url,
         app_name=settings.openrouter_app_name,
     )
-    log_repository = SQLAlchemyChatRequestLogRepository(session)
+    log_repository = SQLAlchemyServiceRequestLogRepository(session)
     usage_logger = LLMUsageLogger(log_repository)
     yield ChatCompletionService(
         provider=provider,
@@ -90,7 +90,7 @@ async def get_file_processing_service(
     ontology_repository = SQLAlchemyOntologyRepository(session)
 
     # Shared usage logger for all LLM-consuming services
-    log_repository = SQLAlchemyChatRequestLogRepository(session)
+    log_repository = SQLAlchemyServiceRequestLogRepository(session)
     usage_logger = LLMUsageLogger(log_repository)
 
     llm_client: LLMClient | None = None
@@ -135,3 +135,29 @@ async def get_file_processing_service(
     )
 
 
+async def get_query_service(
+    session: AsyncSession = Depends(get_db_session),
+) -> AsyncGenerator["QueryService", None]:
+    """Provides a QueryService with ChatProvider, ontology, file repos, and usage logger."""
+    from app.application.services.query_service import QueryService
+
+    settings = get_settings()
+
+    provider = OpenRouterClient(
+        api_key=settings.openrouter_api_key,
+        base_url=settings.openrouter_base_url,
+        app_name=settings.openrouter_app_name,
+    )
+
+    ontology_repo = SQLAlchemyOntologyRepository(session)
+    file_repo = SQLAlchemyFileRepository(session)
+    log_repo = SQLAlchemyServiceRequestLogRepository(session)
+    usage_logger = LLMUsageLogger(log_repo)
+
+    yield QueryService(
+        chat_provider=provider,
+        ontology_repo=ontology_repo,
+        file_repo=file_repo,
+        usage_logger=usage_logger,
+        model=settings.classification_model,
+    )

@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import Float, Text, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.application.interfaces import FileRepository
@@ -123,6 +123,87 @@ class SQLAlchemyFileRepository(FileRepository):
             select(func.count()).select_from(ProcessedFileModel)
         )
         return result.scalar_one()
+
+    async def search(
+        self,
+        concept_ids: list[str] | None = None,
+        metadata_filters: list["MetadataFilter"] | None = None,
+        text_query: str | None = None,
+        limit: int = 50,
+    ) -> list[ProcessedFile]:
+        stmt = select(ProcessedFileModel).where(
+            ProcessedFileModel.status == "done"
+        )
+
+        if concept_ids:
+            stmt = stmt.where(ProcessedFileModel.concept_id.in_(concept_ids))
+
+        if metadata_filters:
+            for mf in metadata_filters:
+                field_col = ProcessedFileModel.metadata_[mf.field_name]
+
+                if mf.operator == "equals":
+                    # Exact match on the value sub-key (as text)
+                    stmt = stmt.where(
+                        field_col["value"].as_string() == mf.value
+                    )
+
+                elif mf.operator in ("gte", "lte"):
+                    # Numeric comparison: cast the JSONB value to float
+                    numeric_val = func.cast(
+                        field_col["value"].as_string(),
+                        Float,
+                    )
+                    try:
+                        target = float(mf.value)
+                    except (ValueError, TypeError):
+                        continue  # skip non-numeric filters
+
+                    if mf.operator == "gte":
+                        stmt = stmt.where(numeric_val >= target)
+                    else:
+                        stmt = stmt.where(numeric_val <= target)
+
+                else:
+                    # Default: "contains" — case-insensitive partial match.
+                    #
+                    # Metadata is stored as  {field: {value: ..., confidence: ...}}.
+                    # "value" can be a plain string OR a ref-object {"label": "..."}.
+                    #
+                    # as_string() returns NULL for JSON objects, so we must
+                    # cast the entire subtree to Text for a reliable fallback,
+                    # and also probe the nested label path for ref-types.
+                    pattern = f"%{mf.value}%"
+
+                    # Path 1: plain scalar value
+                    scalar_val = field_col["value"].as_string()
+
+                    # Path 2: ref-object  value -> label
+                    label_val = field_col["value"]["label"].as_string()
+
+                    # Path 3: cast full subtree to text (catches any shape)
+                    full_text = func.cast(field_col, Text)
+
+                    stmt = stmt.where(
+                        scalar_val.ilike(pattern)
+                        | label_val.ilike(pattern)
+                        | full_text.ilike(pattern)
+                    )
+
+        if text_query:
+            pattern = f"%{text_query}%"
+            stmt = stmt.where(
+                ProcessedFileModel.extracted_text.ilike(pattern)
+                | ProcessedFileModel.summary.ilike(pattern)
+                | ProcessedFileModel.filename.ilike(pattern)
+            )
+
+        stmt = stmt.order_by(
+            ProcessedFileModel.classification_confidence.desc().nulls_last()
+        ).limit(limit)
+
+        result = await self._session.execute(stmt)
+        return [self._to_domain(m) for m in result.scalars().all()]
 
     # ── Mapping ──────────────────────────────────────────────────────
 

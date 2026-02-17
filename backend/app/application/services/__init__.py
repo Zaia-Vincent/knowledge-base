@@ -7,6 +7,7 @@ from .metadata_extraction_service import MetadataExtractionService
 from .ontology_compiler import OntologyCompiler
 from .ontology_service import OntologyService
 from .file_processing_service import FileProcessingService
+from .query_service import QueryService
 
 __all__ = [
     "ArticleService",
@@ -18,5 +19,6 @@ __all__ = [
     "OntologyCompiler",
     "OntologyService",
     "FileProcessingService",
+    "QueryService",
 ]
 

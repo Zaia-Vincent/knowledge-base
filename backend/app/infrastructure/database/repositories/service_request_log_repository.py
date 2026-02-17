@@ -1,22 +1,22 @@
-"""Concrete repository for chat request logs backed by SQLAlchemy."""
+"""Concrete repository for service request logs backed by SQLAlchemy."""
 
 import json
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.application.interfaces import ChatRequestLogRepository
-from app.domain.entities import ChatRequestLog
-from app.infrastructure.database.models.chat_request_log import ChatRequestLogModel
+from app.application.interfaces import ServiceRequestLogRepository
+from app.domain.entities import ServiceRequestLog
+from app.infrastructure.database.models.service_request_log import ServiceRequestLogModel
 
 
-class SQLAlchemyChatRequestLogRepository(ChatRequestLogRepository):
-    """Implements the ChatRequestLogRepository port using SQLAlchemy."""
+class SQLAlchemyServiceRequestLogRepository(ServiceRequestLogRepository):
+    """Implements the ServiceRequestLogRepository port using SQLAlchemy."""
 
     def __init__(self, session: AsyncSession):
         self._session = session
 
-    def _to_entity(self, model: ChatRequestLogModel) -> ChatRequestLog:
+    def _to_entity(self, model: ServiceRequestLogModel) -> ServiceRequestLog:
         """Map ORM model → domain entity."""
         tools: list[str] | None = None
         if model.tools_called:
@@ -25,7 +25,7 @@ class SQLAlchemyChatRequestLogRepository(ChatRequestLogRepository):
             except json.JSONDecodeError:
                 tools = None
 
-        return ChatRequestLog(
+        return ServiceRequestLog(
             id=model.id,
             model=model.model,
             provider=model.provider,
@@ -43,9 +43,9 @@ class SQLAlchemyChatRequestLogRepository(ChatRequestLogRepository):
             created_at=model.created_at,
         )
 
-    def _to_model(self, entity: ChatRequestLog) -> ChatRequestLogModel:
+    def _to_model(self, entity: ServiceRequestLog) -> ServiceRequestLogModel:
         """Map domain entity → ORM model."""
-        return ChatRequestLogModel(
+        return ServiceRequestLogModel(
             model=entity.model,
             provider=entity.provider,
             prompt_tokens=entity.prompt_tokens,
@@ -61,7 +61,7 @@ class SQLAlchemyChatRequestLogRepository(ChatRequestLogRepository):
             request_context=entity.request_context,
         )
 
-    async def create(self, log: ChatRequestLog) -> ChatRequestLog:
+    async def create(self, log: ServiceRequestLog) -> ServiceRequestLog:
         model = self._to_model(log)
         self._session.add(model)
         await self._session.flush()
@@ -69,12 +69,12 @@ class SQLAlchemyChatRequestLogRepository(ChatRequestLogRepository):
 
     async def get_all(
         self, *, skip: int = 0, limit: int = 100
-    ) -> list[ChatRequestLog]:
+    ) -> list[ServiceRequestLog]:
         stmt = (
-            select(ChatRequestLogModel)
+            select(ServiceRequestLogModel)
             .offset(skip)
             .limit(limit)
-            .order_by(ChatRequestLogModel.created_at.desc())
+            .order_by(ServiceRequestLogModel.created_at.desc())
         )
         result = await self._session.execute(stmt)
         return [self._to_entity(row) for row in result.scalars().all()]

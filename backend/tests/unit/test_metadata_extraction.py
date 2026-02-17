@@ -16,6 +16,8 @@ from app.application.interfaces.llm_client import (
 )
 from app.application.services.metadata_extraction_service import (
     MetadataExtractionService,
+    _normalize_array,
+    _normalize_ref,
     _normalize_value,
     _parse_numeric,
 )
@@ -73,6 +75,15 @@ class FakeOntologyRepo(OntologyRepository):
             del self._concepts[concept_id]
             return True
         return False
+
+    async def get_embedded_type(self, type_id: str):
+        return None
+
+    async def get_embedded_types_for_concept(self, concept_id: str):
+        return []
+
+    async def save_embedded_type(self, embedded_type):
+        pass
 
 
 # ── Fake LLM Client ─────────────────────────────────────────────────
@@ -217,6 +228,56 @@ class TestParseNumeric:
     def test_invalid_raises(self):
         with pytest.raises(ValueError):
             _parse_numeric("abc")
+
+
+# ── Reference Normalization Tests ────────────────────────────────────
+
+class TestNormalizeRef:
+
+    def test_ref_from_dict(self):
+        """Python dict is stored as proper JSON object."""
+        entry = _normalize_ref("vendor", {"label": "Deli Tyres bv"})
+        assert entry["value"] == {"label": "Deli Tyres bv"}
+
+    def test_ref_from_stringified_dict(self):
+        """Stringified Python dict is parsed into a proper JSON object."""
+        entry = _normalize_ref("vendor", "{'label': 'Deli Tyres bv'}")
+        assert entry["value"] == {"label": "Deli Tyres bv"}
+
+    def test_ref_from_plain_string(self):
+        """Plain string is wrapped as {"label": "..."}."""
+        entry = _normalize_ref("vendor", "Deli Tyres bv")
+        assert entry["value"] == {"label": "Deli Tyres bv"}
+
+    def test_ref_null_returns_none(self):
+        assert _normalize_ref("vendor", None) is None
+        assert _normalize_ref("vendor", "null") is None
+
+
+# ── Array Normalization Tests ────────────────────────────────────────
+
+class TestNormalizeArray:
+
+    def test_array_from_list(self):
+        """Python list is stored as proper JSON array."""
+        items = [{"line_total": 159.5, "description": "Item 1"}]
+        entry = _normalize_array("line_items", items)
+        assert entry["value"] == items
+
+    def test_array_from_stringified_list(self):
+        """Stringified Python list is parsed into a proper JSON array."""
+        entry = _normalize_array("line_items", "[{'line_total': 159.5}]")
+        assert entry["value"] == [{"line_total": 159.5}]
+
+    def test_array_from_single_dict(self):
+        """Single dict is wrapped into a one-element array."""
+        item = {"line_total": 159.5}
+        entry = _normalize_array("line_items", item)
+        assert entry["value"] == [item]
+
+    def test_array_null_returns_none(self):
+        assert _normalize_array("line_items", None) is None
+        assert _normalize_array("line_items", "[]") is None
 
 
 # ── MetadataExtractionService Tests ──────────────────────────────────

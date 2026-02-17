@@ -3,6 +3,7 @@
 from abc import ABC, abstractmethod
 
 from app.domain.entities import ProcessedFile
+from app.domain.entities.query import MetadataFilter
 
 
 class FileRepository(ABC):
@@ -36,4 +37,15 @@ class FileRepository(ABC):
     @abstractmethod
     async def count(self) -> int:
         """Return the total number of processed files."""
+        ...
+
+    @abstractmethod
+    async def search(
+        self,
+        concept_ids: list[str] | None = None,
+        metadata_filters: list[MetadataFilter] | None = None,
+        text_query: str | None = None,
+        limit: int = 50,
+    ) -> list[ProcessedFile]:
+        """Search processed files by concept, metadata, or text content."""
         ...

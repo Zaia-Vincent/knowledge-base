@@ -1,6 +1,6 @@
 from .article_repository import ArticleRepository
 from .chat_provider import ChatProvider
-from .chat_request_log_repository import ChatRequestLogRepository
+from .service_request_log_repository import ServiceRequestLogRepository
 from .client_record_repository import ClientRecordRepository
 from .ontology_repository import OntologyRepository
 from .file_repository import FileRepository
@@ -10,7 +10,7 @@ from .text_extractor import TextExtractor
 __all__ = [
     "ArticleRepository",
     "ChatProvider",
-    "ChatRequestLogRepository",
+    "ServiceRequestLogRepository",
     "ClientRecordRepository",
     "OntologyRepository",
     "FileRepository",

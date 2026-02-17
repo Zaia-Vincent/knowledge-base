@@ -7,6 +7,7 @@ import { ChatPage } from '@/pages/ChatPage';
 import { FilesPage } from '@/pages/FilesPage';
 import { FileDetailPage } from '@/pages/FileDetailPage';
 import { OntologyPage } from '@/pages/OntologyPage';
+import { QueryPage } from '@/pages/QueryPage';
 
 export const router = createBrowserRouter([
     {
@@ -31,6 +32,10 @@ export const router = createBrowserRouter([
             {
                 path: '/ontology',
                 element: <OntologyPage />,
+            },
+            {
+                path: '/query',
+                element: <QueryPage />,
             },
             {
                 path: '/setup',

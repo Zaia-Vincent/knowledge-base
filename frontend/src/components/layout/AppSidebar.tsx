@@ -10,6 +10,7 @@ import {
     MessageCircle,
     FileUp,
     Layers,
+    Search,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -38,6 +39,7 @@ const navItems: NavItem[] = [
     { label: 'Chat', path: '/chat', icon: <MessageCircle className="size-4" /> },
     { label: 'Files', path: '/files', icon: <FileUp className="size-4" /> },
     { label: 'Ontology', path: '/ontology', icon: <Layers className="size-4" /> },
+    { label: 'Query', path: '/query', icon: <Search className="size-4" /> },
 ];
 
 const navGroups: NavGroup[] = [

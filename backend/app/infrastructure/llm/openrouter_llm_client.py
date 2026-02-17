@@ -46,8 +46,10 @@ IMPORTANT RULES:
 2. Use null for fields that cannot be found in the document
 3. For dates, use ISO 8601 format (YYYY-MM-DD)
 4. For monetary amounts, use plain numbers without currency symbols
-5. Include a "_summary" field with a 2-3 sentence summary of the document
-6. Include a "_confidence" field (0.0-1.0) indicating overall extraction quality"""
+5. For reference fields (e.g. vendor, related_party, customer), return a JSON object with a "label" key: {"label": "Company Name"}
+6. For array/list fields (e.g. line_items, clauses), return a proper JSON array: [{"field": "value"}, ...]
+7. Include a "_summary" field with a 2-3 sentence summary of the document
+8. Include a "_confidence" field (0.0-1.0) indicating overall extraction quality"""
 
 _OCR_SYSTEM_PROMPT = """Extract all visible text from this image. Maintain the original structure and layout as much as possible. If the image contains a table, represent it with aligned columns. Return only the extracted text, no commentary."""
 
@@ -70,6 +72,8 @@ IMPORTANT RULES:
    - Use null for fields that cannot be found
    - For dates, use ISO 8601 format (YYYY-MM-DD)
    - For monetary amounts, use plain numbers without currency symbols
+   - For reference fields (e.g. vendor, related_party), return a JSON object: {"label": "Company Name"}
+   - For array/list fields (e.g. line_items), return a proper JSON array: [{"field": "value"}, ...]
    - Only extract fields defined in the matched concept's template
 
 3. If no concept matches well, use the closest match with lower confidence
@@ -80,10 +84,11 @@ Example response:
   "confidence": 0.95,
   "reasoning": "Document contains invoice number, line items, and payment terms",
   "extracted_properties": {
-    "invoice_number": "INV-2025-001",
-    "total_amount": 1250.00,
-    "invoice_date": "2025-01-15",
-    "vendor_name": "Acme Corp"
+    "document_number": "INV-2025-001",
+    "amount": 1250.00,
+    "document_date": "2025-01-15",
+    "vendor": {"label": "Acme Corp"},
+    "line_items": [{"description": "Consulting", "line_total": 1250.00}]
   },
   "summary": "This is an invoice from Acme Corp dated January 15, 2025 for consulting services totaling EUR 1,250.00."
 }"""
@@ -102,6 +107,8 @@ IMPORTANT RULES:
 - If the PDF contains multiple documents of the same type, call `get_extraction_schema` only ONCE for that type, then call `submit_document` separately for each document.
 - For dates, use ISO 8601 format (YYYY-MM-DD).
 - For monetary amounts, use plain numbers without currency symbols.
+- For reference fields (e.g. vendor, related_party), return a JSON object: {"label": "Company Name"}
+- For array/list fields (e.g. line_items), return a proper JSON array: [{"field": "value"}, ...]
 - Use null for properties that cannot be found in the document.
 - Indicate page ranges (e.g. "1-2", "3-3") for each document.
 - After submitting all documents, respond with a brief summary of what you processed."""

@@ -1,12 +1,12 @@
-"""Domain entity for chat request logging — tracks usage and cost."""
+"""Domain entity for service request logging — tracks usage and cost."""
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 
 @dataclass
-class ChatRequestLog:
-    """Represents a logged chat completion request with cost tracking.
+class ServiceRequestLog:
+    """Represents a logged service request with cost tracking.
 
     Each request to any AI provider is logged with token usage,
     cost, timing, and status information for observability.

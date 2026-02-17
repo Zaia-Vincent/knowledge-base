@@ -19,6 +19,7 @@ def _mock_openrouter_response(
     prompt_tokens: int = 10,
     completion_tokens: int = 5,
     total_tokens: int = 15,
+    cost: float | None = 0.00014,
 ) -> dict:
     """Build a mock OpenRouter JSON response."""
     return {
@@ -35,6 +36,9 @@ def _mock_openrouter_response(
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
+            **({
+                "cost": cost,
+            } if cost is not None else {}),
         },
     }
 
@@ -91,6 +95,7 @@ async def test_complete_parses_response():
     assert result.usage.prompt_tokens == 10
     assert result.usage.completion_tokens == 5
     assert result.usage.total_tokens == 15
+    assert result.usage.cost == 0.00014
     assert result.provider == "openrouter"
 
 

@@ -8,8 +8,8 @@ import logging
 import time
 from typing import Any
 
-from app.application.interfaces import ChatRequestLogRepository
-from app.domain.entities import ChatRequestLog
+from app.application.interfaces import ServiceRequestLogRepository
+from app.domain.entities import ServiceRequestLog
 from app.domain.entities.chat_message import TokenUsage
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ class LLMUsageLogger:
     Usage:
         logger = LLMUsageLogger(log_repository)
         await logger.log_request(
-            model="anthropic/claude-sonnet-4-20250514",
+            model="anthropic/claude-sonnet-4.5",
             provider="openrouter",
             feature="classification",
             usage=result.usage,
@@ -29,7 +29,7 @@ class LLMUsageLogger:
         )
     """
 
-    def __init__(self, log_repository: ChatRequestLogRepository):
+    def __init__(self, log_repository: ServiceRequestLogRepository):
         self._repo = log_repository
 
     async def log_request(
@@ -45,11 +45,11 @@ class LLMUsageLogger:
         tools_called: list[str] | None = None,
         tool_call_count: int = 0,
         request_context: str | None = None,
-    ) -> ChatRequestLog:
+    ) -> ServiceRequestLog:
         """Persist and log an LLM request.
 
         Args:
-            model: Model identifier (e.g. "anthropic/claude-sonnet-4-20250514").
+            model: Model identifier (e.g. "anthropic/claude-sonnet-4.5").
             provider: Provider name (e.g. "openrouter").
             feature: Which subsystem triggered the call
                      ("chat", "classification", "extraction", "pdf_processing").
@@ -62,9 +62,9 @@ class LLMUsageLogger:
             request_context: Additional context (e.g. filename, concept_id).
 
         Returns:
-            The persisted ChatRequestLog entity.
+            The persisted ServiceRequestLog entity.
         """
-        entry = ChatRequestLog(
+        entry = ServiceRequestLog(
             model=model,
             provider=provider,
             feature=feature,
@@ -109,7 +109,7 @@ class LLMUsageLogger:
         duration_ms: int,
         error: Exception,
         request_context: str | None = None,
-    ) -> ChatRequestLog:
+    ) -> ServiceRequestLog:
         """Convenience method for logging failed LLM requests."""
         return await self.log_request(
             model=model,

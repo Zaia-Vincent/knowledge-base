@@ -26,8 +26,8 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 50
 
     # LLM models via OpenRouter
-    classification_model: str = "anthropic/claude-sonnet-4-20250514"
-    extraction_model: str = "anthropic/claude-sonnet-4-20250514"
+    classification_model: str = "google/gemini-3-flash-preview"
+    extraction_model: str = "anthropic/claude-sonnet-4.5"
     pdf_processing_model: str = "google/gemini-3-flash-preview"
 
     # Logging — per-category log levels (DEBUG, INFO, WARNING, ERROR, CRITICAL)

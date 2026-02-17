@@ -7,6 +7,7 @@ After a file is classified, this service:
 4. Normalizes dates, amounts, and currencies (language-aware: NL/EN)
 """
 
+import ast
 import logging
 import re
 import time
@@ -195,6 +196,14 @@ def _normalize_value(
     if raw_value is None:
         return None
 
+    # Handle reference types (ref:Vendor, ref:Organisation, etc.)
+    if field_type.startswith("ref:"):
+        return _normalize_ref(field_name, raw_value)
+
+    # Handle embedded array types (InvoiceLineItem[], etc.)
+    if field_type.endswith("[]"):
+        return _normalize_array(field_name, raw_value)
+
     raw_str = str(raw_value).strip()
     if not raw_str or raw_str.lower() in ("null", "none", "n/a", "-"):
         return None
@@ -294,3 +303,80 @@ def _parse_numeric(s: str) -> float:
         return float(s)
 
     raise ValueError(f"Cannot parse '{s}' as a number")
+
+
+# ── Reference & Array Normalization ──────────────────────────────────
+
+
+def _normalize_ref(
+    field_name: str,
+    raw_value: Any,
+) -> dict[str, Any] | None:
+    """Normalize a reference type value to a proper JSON object.
+
+    Handles:
+    - Python dicts: {'label': 'Deli Tyres bv'} → {"label": "Deli Tyres bv"}
+    - Stringified Python dicts: "{'label': 'Deli Tyres bv'}" → parsed and stored as JSON object
+    - Plain strings: "Deli Tyres bv" → {"label": "Deli Tyres bv"}
+    """
+    if raw_value is None:
+        return None
+
+    if isinstance(raw_value, dict):
+        # Already a proper dict — use directly
+        return {"value": raw_value, "confidence": 0.0}
+
+    raw_str = str(raw_value).strip()
+    if not raw_str or raw_str.lower() in ("null", "none", "n/a", "-"):
+        return None
+
+    # Try to parse stringified Python dict
+    if raw_str.startswith("{") and raw_str.endswith("}"):
+        try:
+            parsed = ast.literal_eval(raw_str)
+            if isinstance(parsed, dict):
+                return {"value": parsed, "confidence": 0.0}
+        except (ValueError, SyntaxError):
+            pass
+
+    # Fallback: wrap plain string as a label
+    return {"value": {"label": raw_str}, "confidence": 0.0}
+
+
+def _normalize_array(
+    field_name: str,
+    raw_value: Any,
+) -> dict[str, Any] | None:
+    """Normalize an embedded array type value to a proper JSON array.
+
+    Handles:
+    - Python lists: [{'line_total': 159.5, ...}] → stored as JSON array
+    - Stringified Python lists: "[{'line_total': 159.5}]" → parsed and stored as JSON array
+    - Single dicts: {'line_total': 159.5} → wrapped as [{...}]
+    """
+    if raw_value is None:
+        return None
+
+    if isinstance(raw_value, list):
+        # Already a proper list — use directly
+        return {"value": raw_value, "confidence": 0.0}
+
+    if isinstance(raw_value, dict):
+        # Single item — wrap in array
+        return {"value": [raw_value], "confidence": 0.0}
+
+    raw_str = str(raw_value).strip()
+    if not raw_str or raw_str.lower() in ("null", "none", "n/a", "-", "[]"):
+        return None
+
+    # Try to parse stringified Python list
+    if raw_str.startswith("[") and raw_str.endswith("]"):
+        try:
+            parsed = ast.literal_eval(raw_str)
+            if isinstance(parsed, list):
+                return {"value": parsed, "confidence": 0.0}
+        except (ValueError, SyntaxError):
+            pass
+
+    # Fallback: store the raw string as text value in a single-element array
+    return {"value": raw_str, "confidence": 0.0}

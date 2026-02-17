@@ -3,11 +3,18 @@ from .chat import (
     ChatCompletionRequest,
     ChatCompletionResponse,
     ChatMessageSchema,
-    ChatRequestLogResponse,
+    ServiceRequestLogResponse,
     ContentPartSchema,
     TokenUsageResponse,
 )
 from .client_record import ClientRecordCreate, ClientRecordUpdate, ClientRecordResponse
+from .query import (
+    QueryRequest,
+    QueryIntentSchema,
+    QueryMatchSchema,
+    QueryResultSchema,
+    MetadataFilterSchema,
+)
 
 __all__ = [
     "ArticleCreate",
@@ -16,11 +23,16 @@ __all__ = [
     "ChatCompletionRequest",
     "ChatCompletionResponse",
     "ChatMessageSchema",
-    "ChatRequestLogResponse",
+    "ServiceRequestLogResponse",
     "ContentPartSchema",
     "TokenUsageResponse",
     "ClientRecordCreate",
     "ClientRecordUpdate",
     "ClientRecordResponse",
+    "QueryRequest",
+    "QueryIntentSchema",
+    "QueryMatchSchema",
+    "QueryResultSchema",
+    "MetadataFilterSchema",
 ]
 

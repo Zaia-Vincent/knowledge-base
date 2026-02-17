@@ -212,6 +212,7 @@ class OpenRouterClient(ChatProvider):
         """
         conversation = list(messages)  # Don't mutate the original
         total_usage = TokenUsage()
+        total_cost: float = 0.0
         url = f"{self._base_url}/chat/completions"
 
         client = await self._get_client()
@@ -237,13 +238,16 @@ class OpenRouterClient(ChatProvider):
                 data = response.json()
                 result = self._parse_completion_response(data)
 
-                # Accumulate token usage
+                # Accumulate token usage and cost
                 total_usage.prompt_tokens += result.usage.prompt_tokens
                 total_usage.completion_tokens += result.usage.completion_tokens
                 total_usage.total_tokens += result.usage.total_tokens
+                if result.usage.cost is not None:
+                    total_cost += result.usage.cost
 
                 # If no tool calls, we're done
                 if not result.tool_calls:
+                    total_usage.cost = total_cost or None
                     result.usage = total_usage
                     return result
 
@@ -292,6 +296,7 @@ class OpenRouterClient(ChatProvider):
             logger.warning(
                 "Tool-calling loop reached max iterations (%d)", max_iterations
             )
+            total_usage.cost = total_cost or None
             result.usage = total_usage
             return result
 
@@ -400,6 +405,7 @@ class OpenRouterClient(ChatProvider):
                 prompt_tokens=usage_data.get("prompt_tokens", 0),
                 completion_tokens=usage_data.get("completion_tokens", 0),
                 total_tokens=usage_data.get("total_tokens", 0),
+                cost=usage_data.get("cost"),
             ),
             images=images,
             provider=self.provider_name,
