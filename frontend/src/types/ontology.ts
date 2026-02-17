@@ -134,3 +134,29 @@ export interface CreateConceptPayload {
     relationships: CreateConceptRelationshipPayload[];
     extraction_template?: CreateExtractionTemplatePayload;
 }
+
+export interface SuggestOntologyTypePayload {
+    name: string;
+    description?: string;
+    inherits?: string;
+    domain_context?: string;
+    style_preferences?: string[];
+    reference_urls?: string[];
+    include_internet_research?: boolean;
+}
+
+export interface SuggestionReference {
+    url: string;
+    title: string;
+    summary: string;
+    source_type: string;
+}
+
+export interface SuggestOntologyTypeResponse {
+    payload: CreateConceptPayload;
+    rationale: string;
+    parent_reasoning: string;
+    adaptation_tips: string[];
+    warnings: string[];
+    references: SuggestionReference[];
+}

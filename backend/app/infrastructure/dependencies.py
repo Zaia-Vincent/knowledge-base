@@ -16,6 +16,7 @@ from app.application.services import (
     LLMUsageLogger,
     MetadataExtractionService,
     OntologyService,
+    OntologyTypeAssistantService,
 )
 from app.infrastructure.database.session import get_db_session
 from app.infrastructure.database.repositories import (
@@ -73,6 +74,35 @@ async def get_ontology_service(
     """Provides an OntologyService with the ontology repository wired up."""
     repository = SQLAlchemyOntologyRepository(session)
     yield OntologyService(repository)
+
+
+async def get_ontology_type_assistant_service(
+    session: AsyncSession = Depends(get_db_session),
+) -> AsyncGenerator[OntologyTypeAssistantService, None]:
+    """Provides AI-assisted ontology type suggestion service."""
+    settings = get_settings()
+
+    ontology_repository = SQLAlchemyOntologyRepository(session)
+    log_repository = SQLAlchemyServiceRequestLogRepository(session)
+    usage_logger = LLMUsageLogger(log_repository)
+
+    provider = None
+    if settings.openrouter_api_key.strip():
+        try:
+            provider = OpenRouterClient(
+                api_key=settings.openrouter_api_key,
+                base_url=settings.openrouter_base_url,
+                app_name=settings.openrouter_app_name,
+            )
+        except Exception:
+            provider = None
+
+    yield OntologyTypeAssistantService(
+        ontology_repo=ontology_repository,
+        chat_provider=provider,
+        model=settings.ontology_assistant_model,
+        usage_logger=usage_logger,
+    )
 
 
 async def get_file_processing_service(

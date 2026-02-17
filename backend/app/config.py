@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     classification_model: str = "google/gemini-3-flash-preview"
     extraction_model: str = "anthropic/claude-sonnet-4.5"
     pdf_processing_model: str = "google/gemini-3-flash-preview"
+    ontology_assistant_model: str = "openrouter/auto"
 
     # Logging — per-category log levels (DEBUG, INFO, WARNING, ERROR, CRITICAL)
     log_level: str = "INFO"                  # Root / app-wide

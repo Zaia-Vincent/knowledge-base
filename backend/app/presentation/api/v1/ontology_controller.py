@@ -14,6 +14,8 @@ from app.application.schemas.ontology import (
     ExtractionTemplateSchema,
     InheritedPropertyGroupSchema,
     OntologyStatsSchema,
+    SuggestOntologyTypeRequestSchema,
+    SuggestOntologyTypeResponseSchema,
 )
 from app.application.services.ontology_service import (
     ConceptAlreadyExistsError,
@@ -21,13 +23,19 @@ from app.application.services.ontology_service import (
     ParentConceptNotFoundError,
     ProtectedConceptError,
 )
+from app.application.services.ontology_type_assistant_service import (
+    OntologyTypeAssistantService,
+)
 from app.domain.entities import (
     ConceptProperty,
     ConceptRelationship,
     ExtractionTemplate,
     OntologyConcept,
 )
-from app.infrastructure.dependencies import get_ontology_service
+from app.infrastructure.dependencies import (
+    get_ontology_service,
+    get_ontology_type_assistant_service,
+)
 
 router = APIRouter(prefix="/ontology", tags=["ontology"])
 
@@ -307,4 +315,30 @@ async def delete_concept(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Concept '{concept_id}' not found",
+        )
+
+
+@router.post(
+    "/suggestions/type",
+    response_model=SuggestOntologyTypeResponseSchema,
+)
+async def suggest_type(
+    body: SuggestOntologyTypeRequestSchema,
+    service: OntologyTypeAssistantService = Depends(get_ontology_type_assistant_service),
+):
+    """Generate an AI-assisted draft for a new L3 ontology type."""
+    try:
+        return await service.suggest_type(
+            name=body.name,
+            description=body.description,
+            inherits=body.inherits,
+            domain_context=body.domain_context,
+            style_preferences=body.style_preferences,
+            reference_urls=body.reference_urls,
+            include_internet_research=body.include_internet_research,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
         )

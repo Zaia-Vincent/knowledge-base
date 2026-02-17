@@ -9,6 +9,8 @@ import type {
     ConceptTreeNode,
     CreateConceptPayload,
     OntologyStats,
+    SuggestOntologyTypePayload,
+    SuggestOntologyTypeResponse,
 } from '@/types/ontology';
 
 const BASE = '/ontology';
@@ -46,6 +48,11 @@ export const ontologyApi = {
     /** Create a new L3 concept. */
     createConcept(data: CreateConceptPayload): Promise<ConceptDetail> {
         return apiClient.post<ConceptDetail>(`${BASE}/concepts`, data);
+    },
+
+    /** Ask AI assistant to draft a new ontology type. */
+    suggestType(data: SuggestOntologyTypePayload): Promise<SuggestOntologyTypeResponse> {
+        return apiClient.post<SuggestOntologyTypeResponse>(`${BASE}/suggestions/type`, data);
     },
 
     /** Delete an L3+ concept. */

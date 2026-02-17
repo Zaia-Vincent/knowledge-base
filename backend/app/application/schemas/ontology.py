@@ -156,3 +156,35 @@ class CreateConceptSchema(BaseModel):
     properties: list[CreateConceptPropertySchema] = []
     relationships: list[CreateConceptRelationshipSchema] = []
     extraction_template: CreateExtractionTemplateSchema | None = None
+
+
+class SuggestOntologyTypeRequestSchema(BaseModel):
+    """Request body for AI-assisted L3 concept suggestion."""
+
+    name: str
+    description: str = ""
+    inherits: str | None = None
+    domain_context: str = ""
+    style_preferences: list[str] = []
+    reference_urls: list[str] = []
+    include_internet_research: bool = True
+
+
+class SuggestionReferenceSchema(BaseModel):
+    """External reference used by the ontology assistant."""
+
+    url: str
+    title: str = ""
+    summary: str = ""
+    source_type: str = "web"
+
+
+class SuggestOntologyTypeResponseSchema(BaseModel):
+    """AI-assisted concept suggestion payload + rationale."""
+
+    payload: CreateConceptSchema
+    rationale: str = ""
+    parent_reasoning: str = ""
+    adaptation_tips: list[str] = []
+    warnings: list[str] = []
+    references: list[SuggestionReferenceSchema] = []
