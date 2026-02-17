@@ -33,6 +33,7 @@ export interface ExtraField {
 export interface ProcessedFileSummary {
     id: string;
     filename: string;
+    display_name?: string | null;
     original_path: string;
     file_size: number;
     mime_type: string;

@@ -871,7 +871,7 @@ export function OntologyPage() {
                     {/* Right — Detail + optional embedded type panel */}
                     <div className="flex-1 flex overflow-hidden min-w-0">
                         {selectedEmbeddedType ? (
-                            <ResizablePanelGroup direction="horizontal" className="h-full">
+                            <ResizablePanelGroup orientation="horizontal" className="h-full">
                                 <ResizablePanel defaultSize={60} minSize={35}>
                                     <ScrollArea className="h-full">
                                         <div className="p-6 max-w-3xl">

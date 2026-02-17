@@ -114,7 +114,7 @@ class FileProcessingService:
         return await self._file_repo.count()
 
     async def delete_file(self, file_id: str) -> bool:
-        """Delete a processed file: remove from disk and database.
+        """Delete a processed file group: remove related rows and file from disk.
 
         Returns True if the file was found and deleted, False if not found.
         """
@@ -125,17 +125,50 @@ class FileProcessingService:
             plog.step_error(PipelineStage.ERROR, f"File not found for deletion: {file_id}")
             return False
 
-        # Step 1: Remove from disk
-        if pf.stored_path:
-            await self._storage.delete_file(pf.stored_path)
-            plog.detail(f"Removed from disk: {pf.stored_path}")
+        # Determine the logical group root.
+        # If a child is deleted, remove all siblings + parent as one group.
+        root_id = pf.origin_file_id or pf.id
 
-        # Step 2: Remove from database (cascade deletes classification, metadata, summary)
-        await self._file_repo.delete(file_id)
+        total_count = await self._file_repo.count()
+        all_files = await self._file_repo.get_all(skip=0, limit=max(total_count, 1))
+        group_files = [
+            f for f in all_files
+            if (f.id == root_id) or (f.origin_file_id == root_id)
+        ]
+
+        # Fallback: if root no longer exists, still delete all files sharing origin_file_id.
+        if not group_files and pf.origin_file_id:
+            group_files = [
+                f for f in all_files
+                if f.origin_file_id == pf.origin_file_id
+            ]
+
+        # Always include the requested file itself.
+        if pf.id and all(f.id != pf.id for f in group_files):
+            group_files.append(pf)
+
+        group_ids = [f.id for f in group_files if f.id]
+
+        # Step 1: Remove from database
+        deleted_ids: list[str] = []
+        for gid in group_ids:
+            if await self._file_repo.delete(gid):
+                deleted_ids.append(gid)
+
+        # Step 2: Remove underlying file(s) from disk only if not referenced elsewhere
+        group_paths = {f.stored_path for f in group_files if f.stored_path}
+        remaining_files = [f for f in all_files if f.id not in set(group_ids)]
+        for path in group_paths:
+            still_referenced = any(f.stored_path == path for f in remaining_files)
+            if not still_referenced:
+                await self._storage.delete_file(path)
+                plog.detail(f"Removed from disk: {path}")
+
         plog.step_complete(
             PipelineStage.COMPLETE,
-            f"Deleted '{pf.filename}'",
+            f"Deleted '{pf.filename}' group",
             file_id=file_id,
+            deleted_records=len(deleted_ids),
         )
         return True
 

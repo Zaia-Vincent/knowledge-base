@@ -25,6 +25,7 @@ from app.domain.entities import (
     ClassificationResult,
     ConceptProperty,
     ExtractionTemplate,
+    Mixin,
     OntologyConcept,
 )
 
@@ -34,8 +35,13 @@ from app.domain.entities import (
 class FakeOntologyRepo(OntologyRepository):
     """In-memory ontology repo for metadata extraction tests."""
 
-    def __init__(self, concepts: list[OntologyConcept] | None = None):
+    def __init__(
+        self,
+        concepts: list[OntologyConcept] | None = None,
+        mixins: list[Mixin] | None = None,
+    ):
         self._concepts = {c.id: c for c in (concepts or [])}
+        self._mixins = {m.id: m for m in (mixins or [])}
 
     async def get_concept(self, concept_id: str):
         return self._concepts.get(concept_id)
@@ -47,7 +53,15 @@ class FakeOntologyRepo(OntologyRepository):
         return []
 
     async def get_ancestors(self, concept_id: str):
-        return []
+        ancestors = []
+        current = self._concepts.get(concept_id)
+        while current and current.inherits:
+            parent = self._concepts.get(current.inherits)
+            if not parent:
+                break
+            ancestors.append(parent)
+            current = parent
+        return list(reversed(ancestors))
 
     async def search_concepts(self, query: str):
         return []
@@ -59,7 +73,7 @@ class FakeOntologyRepo(OntologyRepository):
         return [c for c in self._concepts.values() if c.is_classifiable]
 
     async def get_mixin(self, mixin_id: str):
-        return None
+        return self._mixins.get(mixin_id)
 
     async def save_concept(self, concept):
         self._concepts[concept.id] = concept
@@ -374,6 +388,65 @@ class TestMetadataExtractionService:
         )
 
         assert metadata == {}
+
+    async def test_extract_uses_inherited_and_mixin_properties(self):
+        """Extraction template should include ancestor and mixin properties."""
+        concepts = [
+            OntologyConcept(
+                id="Document",
+                layer="L1",
+                label="Document",
+                abstract=False,
+                properties=[
+                    ConceptProperty(name="document_number", type="string", required=False),
+                ],
+            ),
+            OntologyConcept(
+                id="Invoice",
+                layer="L2",
+                label="Invoice",
+                inherits="Document",
+                abstract=False,
+                mixins=["HasMonetaryValue"],
+                properties=[],
+            ),
+        ]
+        mixins = [
+            Mixin(
+                id="HasMonetaryValue",
+                layer="L1",
+                label="HasMonetaryValue",
+                properties=[
+                    ConceptProperty(name="amount", type="decimal", required=False),
+                    ConceptProperty(name="currency", type="string", required=False),
+                ],
+            )
+        ]
+        repo = FakeOntologyRepo(concepts=concepts, mixins=mixins)
+        llm = FakeExtractionLLMClient(
+            properties={
+                "document_number": "2408484",
+                "amount": "307.19",
+                "currency": "EUR",
+            },
+            summary="Invoice summary",
+            confidence=0.97,
+        )
+        service = MetadataExtractionService(ontology_repo=repo, llm_client=llm)
+
+        classification = ClassificationResult(
+            primary_concept_id="Invoice",
+            confidence=0.9,
+            signals=[],
+        )
+        metadata, _, _ = await service.extract(
+            text="Invoice #2408484 total EUR 307.19",
+            classification=classification,
+        )
+
+        assert metadata["document_number"]["value"] == "2408484"
+        assert metadata["amount"]["value"] == 307.19
+        assert metadata["currency"]["value"] == "EUR"
 
     async def test_extract_llm_failure_falls_back(self, repo, invoice_classification):
         """LLM exception → graceful fallback to rule-based."""

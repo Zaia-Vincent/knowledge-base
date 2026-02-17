@@ -1,5 +1,6 @@
 """SQLAlchemy implementation of the FileRepository for processed files."""
 
+import re
 import uuid
 
 from sqlalchemy import Float, Text, func, select
@@ -143,21 +144,30 @@ class SQLAlchemyFileRepository(FileRepository):
                 field_col = ProcessedFileModel.metadata_[mf.field_name]
 
                 if mf.operator == "equals":
-                    # Exact match on the value sub-key (as text)
+                    # Exact match on scalar values and ref labels.
+                    target = str(mf.value).strip().lower()
+                    scalar_val = func.lower(field_col["value"].as_string())
+                    label_val = func.lower(field_col["value"]["label"].as_string())
                     stmt = stmt.where(
-                        field_col["value"].as_string() == mf.value
+                        (scalar_val == target) | (label_val == target)
                     )
 
                 elif mf.operator in ("gte", "lte"):
                     # Numeric comparison: cast the JSONB value to float
-                    numeric_val = func.cast(
-                        field_col["value"].as_string(),
-                        Float,
-                    )
+                    raw_target = str(mf.value).strip()
+                    numeric_val = func.cast(field_col["value"].as_string(), Float)
                     try:
-                        target = float(mf.value)
+                        target = float(raw_target)
                     except (ValueError, TypeError):
-                        continue  # skip non-numeric filters
+                        # Fallback for ISO dates (YYYY-MM-DD): lexical compare is valid.
+                        if not re.match(r"^\d{4}-\d{2}-\d{2}$", raw_target):
+                            continue  # skip unsupported filters
+                        date_val = field_col["value"].as_string()
+                        if mf.operator == "gte":
+                            stmt = stmt.where(date_val >= raw_target)
+                        else:
+                            stmt = stmt.where(date_val <= raw_target)
+                        continue
 
                     if mf.operator == "gte":
                         stmt = stmt.where(numeric_val >= target)

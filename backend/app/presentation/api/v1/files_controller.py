@@ -25,10 +25,32 @@ router = APIRouter(prefix="/files", tags=["files"])
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
+def _extract_display_name(pf: ProcessedFile) -> str | None:
+    """Build a UI-friendly row name from extracted metadata when available."""
+    if not pf.metadata:
+        return None
+
+    label_entry = pf.metadata.get("label")
+    if not isinstance(label_entry, dict):
+        return None
+
+    value = label_entry.get("value")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+
+    if isinstance(value, dict):
+        nested_label = value.get("label")
+        if isinstance(nested_label, str) and nested_label.strip():
+            return nested_label.strip()
+
+    return None
+
+
 def _to_summary(pf: ProcessedFile) -> ProcessedFileSummarySchema:
     return ProcessedFileSummarySchema(
         id=pf.id,
         filename=pf.filename,
+        display_name=_extract_display_name(pf),
         original_path=pf.original_path,
         file_size=pf.file_size,
         mime_type=pf.mime_type,

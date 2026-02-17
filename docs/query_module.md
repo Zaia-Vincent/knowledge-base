@@ -12,11 +12,11 @@ De queryverwerking verloopt in **twee fasen**:
 
 Het LLM (Large Language Model) ontvangt:
 - De oorspronkelijke vraag van de gebruiker
-- Een compacte samenvatting van de ontologie (concept-ID's, labels, synoniemen, eigenschapsnamen)
+- Een compacte samenvatting van de ontologie (concept-ID's, labels, synoniemen, eigenschapsnamen, eigenschapstypen en beschrijvingen)
 
 Het LLM retourneert een gestructureerd JSON-object (`QueryIntent`) met:
 - **`concept_ids`**: Welke ontologieconcepten de vraag betreft (bijv. `["Invoice"]`)
-- **`metadata_filters`**: Metadata-filters afgeleid uit de vraag (bijv. `vendor_name contains "Acme"`)
+- **`metadata_filters`**: Metadata-filters afgeleid uit de vraag (bijv. `vendor contains "Acme"`)
 - **`keywords`**: Relevante zoektermen
 - **`text_query`**: Een optionele full-text zoekopdracht
 - **`resolved_language`**: De gedetecteerde taal van de vraag
@@ -26,7 +26,7 @@ Het LLM retourneert een gestructureerd JSON-object (`QueryIntent`) met:
 
 De `FileRepository.search()` methode doorzoekt verwerkte bestanden met behulp van:
 - `concept_id IN (...)` voor conceptfilters
-- PostgreSQL JSONB `@>` containment voor metadata-filters
+- PostgreSQL JSONB pad-filtering (`->`, `->>`, `ILIKE`) voor metadata-filters
 - `ILIKE` voor full-text zoekopdrachten
 - Resultaten gesorteerd op classificatiebetrouwbaarheid (aflopend)
 
@@ -131,7 +131,7 @@ Voert een volledige query uit: vertaalt de vraag en doorzoekt de database.
         "concept_ids": ["Invoice"],
         "concept_labels": ["Invoice"],
         "metadata_filters": [
-            {"field_name": "vendor_name", "value": "Acme", "operator": "contains"}
+            {"field_name": "vendor", "value": "Acme", "operator": "contains"}
         ],
         "keywords": ["factuur", "Acme"],
         "text_query": null,
@@ -144,7 +144,7 @@ Voert een volledige query uit: vertaalt de vraag en doorzoekt de database.
             "concept_id": "Invoice",
             "confidence": 0.95,
             "summary": "Factuur van Acme Corp voor diensten januari 2025",
-            "metadata": {"vendor_name": "Acme Corp", "amount": "1250.00"}
+            "metadata": {"vendor": {"value": {"label": "Acme Corp"}}, "amount": {"value": 1250.0}}
         }
     ],
     "total_matches": 1
@@ -181,7 +181,29 @@ De service bouwt automatisch een compacte ontologiesamenvatting voor de LLM-prom
 - Concept-ID en label
 - Beschrijving (eerste 200 tekens)
 - Synoniemen
-- Eigenschapsnamen en -typen
+- Resolved eigenschapsnamen en -typen (inherited + mixins + eigen velden)
+- Eigenschapsbeschrijvingen (indien beschikbaar)
+
+### Semantische fallback (contextinterpretatie)
+
+Als het LLM een relevante metadatafilter mist, past de service een beperkte fallback toe op basis van vraagcontext + ontologie:
+- `received from X` / `from X` / `van X` / `afkomstig van X` wordt gemapt naar een vendor/supplier-achtig veld als dat in de ontologie bestaat.
+- Voorbeeld:  
+  `get all invoices received from DONCKERS`  
+  ⇒ concept `Invoice` + metadatafilter `vendor contains "DONCKERS"`.
+
+Deze fallback wordt alleen gebruikt als het veld niet al door het LLM is toegevoegd.
+
+### Query trace logging
+
+De service logt nu expliciet wat er gebeurt tijdens intentherkenning en uitvoering:
+- Start van intentresolutie (`question`, aantal ontologieconcepten)
+- Rauwe LLM-response (afgekapt)
+- Geparste intent
+- Gecanonicaliseerde/eind-intent (concepten + metadatafilters)
+- Uitgevoerde DB-queryfilters en aantal matches
+
+Zo kan je in de backend logs stap voor stap volgen hoe een natuurlijke vraag naar een concrete query wordt vertaald.
 
 ### Foutafhandeling
 
@@ -199,19 +221,23 @@ De frontend biedt een interactieve querypagina op `/query` met:
 
 ## Testen
 
-De module bevat 9 unittests die alle kernfunctionaliteit dekken:
+De module bevat 13 unittests die alle kernfunctionaliteit dekken:
 
 | Test | Beschrijving |
 |------|-------------|
 | `test_parses_valid_json_from_llm` | Parseert gestructureerde JSON correct |
+| `test_maps_concept_labels_to_ids` | Zet conceptlabels/synoniemen om naar geldige concept-ID's |
+| `test_ontology_context_includes_inherited_and_mixin_properties` | Gebruikt resolved properties voor intentherkenning |
 | `test_parses_json_with_markdown_fences` | Verwijdert markdown code-blokken rondom JSON |
 | `test_fallback_on_invalid_json` | Valt terug bij ongeldige LLM-response |
 | `test_ontology_context_excludes_abstract` | Abstracte concepten worden uitgesloten |
 | `test_usage_is_logged` | LLM-gebruik wordt gelogd |
+| `test_maps_received_from_phrase_to_vendor_filter` | Mapt "received from X" naar `vendor` metadatafilter |
 | `test_search_by_concept_ids` | Zoekt bestanden op concept-ID's |
 | `test_empty_intent_returns_all` | Lege intentie retourneert alle bestanden |
 | `test_max_results_limits_output` | Respecteert het maximale resultaten |
 | `test_full_query_combines_intent_and_search` | End-to-end flow werkt correct |
+| `test_logs_query_trace_and_passes_filters_to_search` | Controleert query-trace logging en doorgegeven filters |
 
 ### Tests uitvoeren
 

@@ -256,3 +256,79 @@ class TestFileProcessingService:
         """Deleting a nonexistent file returns False."""
         result = await service.delete_file("nonexistent-id")
         assert result is False
+
+    async def test_delete_parent_removes_entire_document_group(self, service, repo):
+        """Deleting a parent document should delete all related sub-documents."""
+        parent = await service.upload_file(b"multi doc source", "bundle.pdf")
+
+        child1 = await repo.create(
+            ProcessedFile(
+                filename="bundle.pdf (document 2)",
+                original_path=parent.original_path,
+                file_size=parent.file_size,
+                mime_type=parent.mime_type,
+                stored_path=parent.stored_path,
+                status=ProcessingStatus.DONE,
+                origin_file_id=parent.id,
+                page_range="2-2",
+            )
+        )
+        child2 = await repo.create(
+            ProcessedFile(
+                filename="bundle.pdf (document 3)",
+                original_path=parent.original_path,
+                file_size=parent.file_size,
+                mime_type=parent.mime_type,
+                stored_path=parent.stored_path,
+                status=ProcessingStatus.DONE,
+                origin_file_id=parent.id,
+                page_range="3-3",
+            )
+        )
+        assert await repo.count() == 3
+
+        deleted = await service.delete_file(parent.id)
+        assert deleted is True
+        assert await repo.get_by_id(parent.id) is None
+        assert await repo.get_by_id(child1.id) is None
+        assert await repo.get_by_id(child2.id) is None
+        assert await repo.count() == 0
+        assert not Path(parent.stored_path).exists()
+
+    async def test_delete_child_removes_entire_document_group(self, service, repo):
+        """Deleting a child document should still delete parent + siblings."""
+        parent = await service.upload_file(b"multi doc source", "bundle-child-delete.pdf")
+
+        child1 = await repo.create(
+            ProcessedFile(
+                filename="bundle-child-delete.pdf (document 2)",
+                original_path=parent.original_path,
+                file_size=parent.file_size,
+                mime_type=parent.mime_type,
+                stored_path=parent.stored_path,
+                status=ProcessingStatus.DONE,
+                origin_file_id=parent.id,
+                page_range="2-2",
+            )
+        )
+        child2 = await repo.create(
+            ProcessedFile(
+                filename="bundle-child-delete.pdf (document 3)",
+                original_path=parent.original_path,
+                file_size=parent.file_size,
+                mime_type=parent.mime_type,
+                stored_path=parent.stored_path,
+                status=ProcessingStatus.DONE,
+                origin_file_id=parent.id,
+                page_range="3-3",
+            )
+        )
+        assert await repo.count() == 3
+
+        deleted = await service.delete_file(child2.id)
+        assert deleted is True
+        assert await repo.get_by_id(parent.id) is None
+        assert await repo.get_by_id(child1.id) is None
+        assert await repo.get_by_id(child2.id) is None
+        assert await repo.count() == 0
+        assert not Path(parent.stored_path).exists()

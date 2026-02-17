@@ -38,6 +38,7 @@ class ProcessedFileSummarySchema(BaseModel):
     """Lightweight file representation for list views."""
     id: str
     filename: str
+    display_name: str | None = None
     original_path: str
     file_size: int
     mime_type: str

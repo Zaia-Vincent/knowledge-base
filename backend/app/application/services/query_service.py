@@ -7,6 +7,7 @@ Two-stage flow:
 
 import json
 import logging
+import re
 import time
 from typing import Any
 
@@ -42,10 +43,15 @@ against an ontology concept and has extracted metadata properties.
 
 1. Identify which ontology concept(s) the question refers to.
 2. Extract any metadata filters the user implies (e.g. "invoices from Acme"
-   → concept "Invoice", metadata filter vendor_name contains "Acme").
+   → concept "Invoice", metadata filter vendor contains "Acme").
 3. Extract a text search query if the user is looking for specific content.
 4. Detect the language of the question.
 5. Provide brief reasoning for your choices.
+6. Use ONLY property names that appear in the ontology context.
+7. Do not invent fields like "vendor_name" when the ontology property is "vendor".
+8. Map relationship phrases to ontology fields when possible:
+   - "invoices from Donckers" / "received from Donckers" / "facturen van Donckers"
+     usually means metadata filter on vendor (or supplier-like field).
 
 ## Response Format (strict JSON, no markdown)
 
@@ -106,6 +112,11 @@ class QueryService:
 
         # Build ontology context (slim representation for the prompt)
         concepts_summary = await self._build_ontology_context()
+        logger.info(
+            "Query intent start: question=%r, ontology_concepts=%d",
+            question,
+            len(concepts_summary),
+        )
         system_prompt = _INTENT_SYSTEM_PROMPT.format(
             concepts_json=json.dumps(concepts_summary, indent=2, ensure_ascii=False),
         )
@@ -134,12 +145,16 @@ class QueryService:
                 duration_ms=duration_ms,
             )
 
+            logger.info("Query intent raw LLM response: %s", self._clip(result.content, 1200))
+
             intent = self._parse_intent(question, result.content)
+            logger.info("Query intent parsed: %s", self._intent_as_dict(intent))
+            intent = self._canonicalize_intent(intent, concepts_summary)
+            intent = self._apply_question_fallbacks(intent, question, concepts_summary)
+
             logger.info(
-                "Resolved query intent: concepts=%s, filters=%d, keywords=%s",
-                intent.concept_ids,
-                len(intent.metadata_filters),
-                intent.keywords,
+                "Query intent resolved: %s",
+                self._intent_as_dict(intent),
             )
             return intent
 
@@ -167,12 +182,38 @@ class QueryService:
         max_results: int = 20,
     ) -> QueryResult:
         """Stage 2: Search the knowledge database using the resolved intent."""
+        has_structured_filters = bool(intent.concept_ids or intent.metadata_filters)
+        logger.info(
+            "Executing query search: concepts=%s filters=%s text_query=%r limit=%d",
+            intent.concept_ids,
+            self._filters_as_dict(intent.metadata_filters),
+            intent.text_query,
+            max_results,
+        )
         files = await self._file_repo.search(
             concept_ids=intent.concept_ids or None,
             metadata_filters=intent.metadata_filters or None,
             text_query=intent.text_query,
             limit=max_results,
         )
+
+        # If strict free-text phrase produced no results, retry with only
+        # structured ontology filters. This avoids false negatives for
+        # natural-language text_query values like "invoices from DONCKERS".
+        if not files and intent.text_query and has_structured_filters:
+            logger.info(
+                "Query retry without text_query after zero results. "
+                "original_text_query=%r concepts=%s filters=%s",
+                intent.text_query,
+                intent.concept_ids,
+                self._filters_as_dict(intent.metadata_filters),
+            )
+            files = await self._file_repo.search(
+                concept_ids=intent.concept_ids or None,
+                metadata_filters=intent.metadata_filters or None,
+                text_query=None,
+                limit=max_results,
+            )
 
         matches = [
             QueryMatch(
@@ -188,6 +229,12 @@ class QueryService:
             for f in files
         ]
 
+        logger.info(
+            "Query search complete: total_matches=%d sample_files=%s",
+            len(matches),
+            [m.filename for m in matches[:5]],
+        )
+
         return QueryResult(
             intent=intent,
             matches=matches,
@@ -199,6 +246,8 @@ class QueryService:
     async def _build_ontology_context(self) -> list[dict[str, Any]]:
         """Build a slim ontology summary for the LLM prompt."""
         concepts = await self._ontology_repo.get_all_concepts()
+        concepts_by_id = {c.id: c for c in concepts}
+        mixin_cache: dict[str, Any] = {}
         summary = []
         for c in concepts:
             if c.abstract:
@@ -211,16 +260,329 @@ class QueryService:
                 "synonyms": c.synonyms,
             }
 
-            # Include property names so LLM can create metadata filters
-            if c.properties:
+            # Include resolved property names (inherited + mixins) so LLM can
+            # create valid metadata filters for concrete concepts.
+            resolved_props = await self._resolve_properties_for_context(
+                c, concepts_by_id, mixin_cache
+            )
+            if resolved_props:
                 entry["properties"] = [
-                    {"name": p.name, "type": p.type}
-                    for p in c.properties
+                    {
+                        "name": p.name,
+                        "type": p.type,
+                        "description": p.description or "",
+                    }
+                    for p in resolved_props
                 ]
 
             summary.append(entry)
 
         return summary
+
+    async def _resolve_properties_for_context(
+        self,
+        concept,
+        concepts_by_id: dict[str, Any],
+        mixin_cache: dict[str, Any],
+    ) -> list[Any]:
+        """Resolve properties for prompt context: ancestors + mixins + self."""
+        chain = []
+        current = concept
+        seen_ids: set[str] = set()
+        while current and current.id not in seen_ids:
+            seen_ids.add(current.id)
+            chain.append(current)
+            parent_id = current.inherits
+            current = concepts_by_id.get(parent_id) if parent_id else None
+        chain.reverse()  # root -> leaf
+
+        resolved: dict[str, Any] = {}
+        for node in chain:
+            for mixin_id in node.mixins:
+                if mixin_id not in mixin_cache:
+                    mixin_cache[mixin_id] = await self._ontology_repo.get_mixin(mixin_id)
+                mixin = mixin_cache.get(mixin_id)
+                if mixin:
+                    for prop in mixin.properties:
+                        resolved[prop.name] = prop
+            for prop in node.properties:
+                resolved[prop.name] = prop
+
+        return list(resolved.values())
+
+    @staticmethod
+    def _canonicalize_intent(
+        intent: QueryIntent,
+        concepts_summary: list[dict[str, Any]],
+    ) -> QueryIntent:
+        """Normalize concept IDs and metadata field names to ontology terms."""
+        if not concepts_summary:
+            return intent
+
+        # ── Concept ID normalization ────────────────────────────────
+        concept_aliases: dict[str, str] = {}
+        for c in concepts_summary:
+            concept_id = c.get("id", "")
+            if not concept_id:
+                continue
+            concept_aliases[concept_id.lower()] = concept_id
+            label = (c.get("label") or "").strip().lower()
+            if label:
+                concept_aliases[label] = concept_id
+            for synonym in c.get("synonyms", []):
+                syn = str(synonym).strip().lower()
+                if syn:
+                    concept_aliases[syn] = concept_id
+
+        normalized_concepts: list[str] = []
+        for raw in intent.concept_ids:
+            key = str(raw).strip().lower()
+            mapped = concept_aliases.get(key, raw)
+            if mapped and mapped not in normalized_concepts:
+                normalized_concepts.append(mapped)
+
+        # If concept_ids were weak/empty but labels are present, try labels.
+        if not normalized_concepts and intent.concept_labels:
+            for raw in intent.concept_labels:
+                key = str(raw).strip().lower()
+                mapped = concept_aliases.get(key)
+                if mapped and mapped not in normalized_concepts:
+                    normalized_concepts.append(mapped)
+
+        intent.concept_ids = normalized_concepts
+
+        # ── Metadata field normalization ────────────────────────────
+        candidate_concepts = [
+            c for c in concepts_summary if c.get("id") in intent.concept_ids
+        ] or concepts_summary
+
+        field_specs: dict[str, dict[str, Any]] = {}
+        for concept in candidate_concepts:
+            for prop in concept.get("properties", []):
+                name = prop.get("name")
+                if name:
+                    field_specs[name] = prop
+
+        alias_map: dict[str, str] = {}
+        for name, spec in field_specs.items():
+            key = name.lower()
+            alias_map[key] = name
+            alias_map[key.replace("-", "_")] = name
+            field_type = str(spec.get("type", ""))
+            if field_type.startswith("ref:"):
+                alias_map[f"{key}_name"] = name
+                alias_map[f"{key}_label"] = name
+                alias_map[f"{key}.label"] = name
+
+        # Common legacy aliases used in older docs/examples.
+        for legacy, target in {
+            "vendor_name": "vendor",
+            "supplier_name": "vendor",
+            "vendor_label": "vendor",
+        }.items():
+            if target in field_specs:
+                alias_map[legacy] = target
+
+        allowed_ops = {"contains", "equals", "gte", "lte"}
+        normalized_filters: list[MetadataFilter] = []
+        for mf in intent.metadata_filters:
+            raw_field = str(mf.field_name).strip()
+            field_key = raw_field.lower()
+            canonical_field = alias_map.get(field_key)
+
+            if not canonical_field and field_key.endswith("_name"):
+                canonical_field = alias_map.get(field_key[: -len("_name")])
+            if not canonical_field and "." in field_key:
+                canonical_field = alias_map.get(field_key.split(".", 1)[0])
+
+            operator = str(mf.operator).strip().lower()
+            if operator not in allowed_ops:
+                operator = "contains"
+
+            normalized_filters.append(
+                MetadataFilter(
+                    field_name=canonical_field or raw_field,
+                    value=str(mf.value).strip(),
+                    operator=operator,
+                )
+            )
+
+        intent.metadata_filters = normalized_filters
+        return intent
+
+    @classmethod
+    def _apply_question_fallbacks(
+        cls,
+        intent: QueryIntent,
+        question: str,
+        concepts_summary: list[dict[str, Any]],
+    ) -> QueryIntent:
+        """Apply deterministic fallback mappings when LLM intent is incomplete."""
+        if not question.strip():
+            return intent
+
+        # Fallback 1: infer concept IDs from ontology labels/synonyms if needed.
+        if not intent.concept_ids:
+            inferred = cls._infer_concepts_from_question(question, concepts_summary)
+            if inferred:
+                intent.concept_ids = inferred
+                logger.info("Applied concept fallback from question text: %s", inferred)
+
+        # Fallback 2: map "from/van X" party phrases to vendor-like fields.
+        party_value = cls._extract_party_value_from_question(question)
+        if not party_value:
+            return intent
+
+        candidate_concepts = [
+            c for c in concepts_summary if c.get("id") in intent.concept_ids
+        ] or concepts_summary
+        party_field = cls._pick_party_field(candidate_concepts)
+        if not party_field:
+            return intent
+
+        already_present = any(
+            f.field_name.lower() == party_field.lower()
+            for f in intent.metadata_filters
+        )
+        if already_present:
+            return intent
+
+        intent.metadata_filters.append(
+            MetadataFilter(
+                field_name=party_field,
+                value=party_value,
+                operator="contains",
+            )
+        )
+        logger.info(
+            "Applied party fallback: mapped %r to metadata filter %s contains %r",
+            question,
+            party_field,
+            party_value,
+        )
+        return intent
+
+    @staticmethod
+    def _infer_concepts_from_question(
+        question: str,
+        concepts_summary: list[dict[str, Any]],
+    ) -> list[str]:
+        """Infer concept IDs by matching question text against labels/synonyms."""
+        q = question.lower()
+        inferred: list[str] = []
+        for concept in concepts_summary:
+            concept_id = concept.get("id")
+            if not concept_id:
+                continue
+            aliases = [
+                str(concept_id),
+                str(concept.get("label") or ""),
+                *[str(s) for s in concept.get("synonyms", [])],
+            ]
+            for alias in aliases:
+                token = alias.strip().lower()
+                if token and token in q:
+                    if concept_id not in inferred:
+                        inferred.append(concept_id)
+                    break
+        return inferred
+
+    @staticmethod
+    def _extract_party_value_from_question(question: str) -> str | None:
+        """Extract a likely party name from relation phrases like 'from X' or 'van X'."""
+        patterns = [
+            r"\breceived\s+from\s+([^\n,.;!?]+)",
+            r"\bfrom\s+([^\n,.;!?]+)",
+            r"\bvan\s+([^\n,.;!?]+)",
+            r"\bafkomstig\s+van\s+([^\n,.;!?]+)",
+        ]
+        for pattern in patterns:
+            m = re.search(pattern, question, flags=re.IGNORECASE)
+            if not m:
+                continue
+            value = m.group(1).strip().strip("\"'")
+            # Trim common continuation words.
+            value = re.split(
+                r"\s+(?:that|which|where|with|voor|met|die|waar)\s+",
+                value,
+                flags=re.IGNORECASE,
+                maxsplit=1,
+            )[0].strip()
+            if len(value) >= 2:
+                return value
+        return None
+
+    @staticmethod
+    def _pick_party_field(candidate_concepts: list[dict[str, Any]]) -> str | None:
+        """Pick the best ontology field for party/vendor-like constraints."""
+        fields: dict[str, str] = {}
+        for concept in candidate_concepts:
+            for prop in concept.get("properties", []):
+                name = str(prop.get("name") or "").strip()
+                ptype = str(prop.get("type") or "").strip().lower()
+                if name:
+                    fields[name] = ptype
+
+        if not fields:
+            return None
+
+        preferred_exact = [
+            "vendor",
+            "supplier",
+            "issuer",
+            "seller",
+            "counterparty",
+            "related_party",
+        ]
+        lowered = {name.lower(): name for name in fields}
+
+        for key in preferred_exact:
+            if key in lowered:
+                return lowered[key]
+
+        for name, ptype in fields.items():
+            lname = name.lower()
+            if (
+                ptype.startswith("ref:")
+                and any(tok in lname for tok in ("vendor", "supplier", "issuer", "party"))
+            ):
+                return name
+
+        return None
+
+    @staticmethod
+    def _clip(text: str, limit: int = 300) -> str:
+        """Clip long text for concise logs."""
+        raw = (text or "").strip()
+        if len(raw) <= limit:
+            return raw
+        return f"{raw[:limit]}... (truncated {len(raw) - limit} chars)"
+
+    @staticmethod
+    def _filters_as_dict(filters: list[MetadataFilter]) -> list[dict[str, str]]:
+        """Serialize metadata filters for readable logs."""
+        return [
+            {
+                "field_name": f.field_name,
+                "value": f.value,
+                "operator": f.operator,
+            }
+            for f in filters
+        ]
+
+    @classmethod
+    def _intent_as_dict(cls, intent: QueryIntent) -> dict[str, Any]:
+        """Serialize intent for readable logs."""
+        return {
+            "question": intent.original_question,
+            "resolved_language": intent.resolved_language,
+            "concept_ids": intent.concept_ids,
+            "concept_labels": intent.concept_labels,
+            "metadata_filters": cls._filters_as_dict(intent.metadata_filters),
+            "keywords": intent.keywords,
+            "text_query": intent.text_query,
+            "reasoning": intent.reasoning,
+        }
 
     @staticmethod
     def _parse_intent(question: str, llm_response: str) -> QueryIntent:

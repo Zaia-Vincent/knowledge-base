@@ -1,7 +1,6 @@
 import { Sun, Moon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTheme } from '@/hooks/use-theme';
-import { Separator } from '@/components/ui/separator';
 
 export function TopBar() {
     const { theme, toggleTheme } = useTheme();

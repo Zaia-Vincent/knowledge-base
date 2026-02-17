@@ -89,32 +89,100 @@ function confidenceBg(pct: number): string {
     return 'bg-destructive';
 }
 
+function formatMetadataValue(value: unknown): string {
+    if (value == null) return '—';
+    if (typeof value === 'object') {
+        if (Array.isArray(value)) {
+            return value.map((item) => formatMetadataValue(item)).join(', ');
+        }
+
+        const obj = value as Record<string, unknown>;
+        const label = obj.label;
+        if (typeof label === 'string' && label.trim()) return label;
+
+        const name = obj.name;
+        if (typeof name === 'string' && name.trim()) return name;
+
+        try {
+            return JSON.stringify(value);
+        } catch {
+            return '[Object]';
+        }
+    }
+    return String(value);
+}
+
 /* ── Grouping ────────────────────────────────────────────────────── */
 
 interface FileGroup {
     parent: ProcessedFileSummary;
     children: ProcessedFileSummary[];
+    groupName: string;
+    rootId: string;
+}
+
+function stripDocumentSuffix(filename: string): string {
+    return filename.replace(/\s+\(document\s+\d+\)$/i, '').trim();
+}
+
+function parsePageStart(pageRange: string | null): number | null {
+    if (!pageRange) return null;
+    const match = pageRange.match(/^(\d+)/);
+    if (!match) return null;
+    return Number.parseInt(match[1], 10);
+}
+
+function sortDocsInGroup(a: ProcessedFileSummary, b: ProcessedFileSummary): number {
+    const aPage = parsePageStart(a.page_range);
+    const bPage = parsePageStart(b.page_range);
+
+    if (aPage != null && bPage != null && aPage !== bPage) return aPage - bPage;
+    if (aPage != null && bPage == null) return -1;
+    if (aPage == null && bPage != null) return 1;
+
+    return b.uploaded_at.localeCompare(a.uploaded_at);
 }
 
 function groupFiles(files: ProcessedFileSummary[]): FileGroup[] {
-    const childrenMap = new Map<string, ProcessedFileSummary[]>();
-    const childIds = new Set<string>();
+    const rootMap = new Map<string, { parent?: ProcessedFileSummary; children: ProcessedFileSummary[] }>();
 
-    for (const f of files) {
-        if (f.origin_file_id) {
-            childIds.add(f.id);
-            const existing = childrenMap.get(f.origin_file_id) ?? [];
-            existing.push(f);
-            childrenMap.set(f.origin_file_id, existing);
+    for (const file of files) {
+        const rootId = file.origin_file_id ?? file.id;
+        const entry = rootMap.get(rootId) ?? { children: [] };
+        if (file.origin_file_id) {
+            entry.children.push(file);
+        } else {
+            entry.parent = file;
         }
+        rootMap.set(rootId, entry);
     }
 
     const groups: FileGroup[] = [];
-    for (const f of files) {
-        if (childIds.has(f.id)) continue;
-        groups.push({ parent: f, children: childrenMap.get(f.id) ?? [] });
+    for (const [rootId, entry] of rootMap.entries()) {
+        const sortedChildren = [...entry.children].sort(sortDocsInGroup);
+        if (entry.parent) {
+            groups.push({
+                parent: entry.parent,
+                children: sortedChildren,
+                groupName: stripDocumentSuffix(entry.parent.filename),
+                rootId,
+            });
+            continue;
+        }
+
+        // Orphan recovery: keep legacy children visible and grouped even if
+        // the original parent row was removed earlier.
+        if (sortedChildren.length > 0) {
+            groups.push({
+                parent: sortedChildren[0],
+                children: sortedChildren.slice(1),
+                groupName: stripDocumentSuffix(sortedChildren[0].filename),
+                rootId,
+            });
+        }
     }
-    return groups;
+
+    return groups.sort((a, b) => b.parent.uploaded_at.localeCompare(a.parent.uploaded_at));
 }
 
 /* ── Type Filter Pills ───────────────────────────────────────────── */
@@ -150,18 +218,19 @@ function TypeFilter({ types, selected, onSelect }: {
 
 /* ── File Row ────────────────────────────────────────────────────── */
 
-function FileRow({ file, onSelect, onDelete, isSelected, indent = false }: {
+function FileRow({ file, onSelect, onDelete, isSelected, indent = false, showDelete = true }: {
     file: ProcessedFileSummary;
     onSelect: (id: string) => void;
     onDelete: (id: string) => void;
     isSelected: boolean;
     indent?: boolean;
+    showDelete?: boolean;
 }) {
     const [deleting, setDeleting] = useState(false);
 
     const handleDelete = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (!window.confirm(`Delete "${file.filename}"?`)) return;
+        if (!window.confirm(`Delete "${file.filename}" and all related extracted documents?`)) return;
         setDeleting(true);
         try { await onDelete(file.id); } finally { setDeleting(false); }
     };
@@ -175,7 +244,7 @@ function FileRow({ file, onSelect, onDelete, isSelected, indent = false }: {
                 <div className="flex items-center gap-2.5">
                     <FileText className={`size-4 shrink-0 ${isSelected ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'}`} />
                     <div className="min-w-0">
-                        <p className="truncate font-medium text-sm leading-tight">{file.filename}</p>
+                        <p className="truncate font-medium text-sm leading-tight">{file.display_name || file.filename}</p>
                         {file.page_range && <p className="truncate text-xs text-muted-foreground mt-0.5">Pages {file.page_range}</p>}
                     </div>
                 </div>
@@ -188,9 +257,11 @@ function FileRow({ file, onSelect, onDelete, isSelected, indent = false }: {
             <td className="px-4 py-3 text-right"><span className="text-xs text-muted-foreground tabular-nums">{formatFileSize(file.file_size)}</span></td>
             <td className="px-4 py-3"><span className="text-xs text-muted-foreground">{formatDate(file.uploaded_at)}</span></td>
             <td className="px-4 py-3">
-                <button onClick={handleDelete} disabled={deleting} className="rounded-md p-1.5 text-muted-foreground opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 disabled:opacity-50" title="Delete">
-                    {deleting ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
-                </button>
+                {showDelete ? (
+                    <button onClick={handleDelete} disabled={deleting} className="rounded-md p-1.5 text-muted-foreground opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 disabled:opacity-50" title="Delete group">
+                        {deleting ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+                    </button>
+                ) : null}
             </td>
         </tr>
     );
@@ -203,6 +274,10 @@ function AccordionGroup({ group, selectedId, onSelect, onDelete }: {
 }) {
     const [expanded, setExpanded] = useState(false);
     const hasChildren = group.children.length > 0;
+    const documents = useMemo(
+        () => [group.parent, ...group.children].sort(sortDocsInGroup),
+        [group.parent, group.children],
+    );
 
     if (!hasChildren) {
         return <FileRow file={group.parent} onSelect={onSelect} onDelete={onDelete} isSelected={selectedId === group.parent.id} />;
@@ -224,7 +299,7 @@ function AccordionGroup({ group, selectedId, onSelect, onDelete }: {
                         </button>
                         <FileText className={`size-4 shrink-0 ${parentSelected ? 'text-primary' : 'text-muted-foreground group-hover:text-primary'}`} />
                         <div className="min-w-0">
-                            <p className="truncate font-medium text-sm leading-tight">{group.parent.filename}</p>
+                            <p className="truncate font-medium text-sm leading-tight">{group.groupName}</p>
                             <p className="text-xs text-muted-foreground mt-0.5">{group.children.length + 1} document{group.children.length > 0 ? 's' : ''}</p>
                         </div>
                     </div>
@@ -236,13 +311,19 @@ function AccordionGroup({ group, selectedId, onSelect, onDelete }: {
                 <td className="px-4 py-3"><span className="text-xs text-muted-foreground">{formatDate(group.parent.uploaded_at)}</span></td>
                 <td className="px-4 py-3">
                     <button
-                        onClick={(e) => { e.stopPropagation(); if (window.confirm(`Delete "${group.parent.filename}"?`)) onDelete(group.parent.id); }}
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            const total = group.children.length + 1;
+                            if (window.confirm(`Delete "${group.groupName}" and all ${total} related document${total === 1 ? '' : 's'}?`)) {
+                                onDelete(group.parent.id);
+                            }
+                        }}
                         className="rounded-md p-1.5 text-muted-foreground opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
                     ><Trash2 className="size-3.5" /></button>
                 </td>
             </tr>
-            {(expanded || anyChildSelected) && group.children.map((child) => (
-                <FileRow key={child.id} file={child} onSelect={onSelect} onDelete={onDelete} isSelected={selectedId === child.id} indent />
+            {(expanded || anyChildSelected) && documents.map((child) => (
+                <FileRow key={child.id} file={child} onSelect={onSelect} onDelete={onDelete} isSelected={selectedId === child.id} indent showDelete={false} />
             ))}
         </>
     );
@@ -318,15 +399,18 @@ function FormattedField({ fieldKey, field, propertyDef }: {
                                 {Object.entries(item).map(([k, v]) => (
                                     <div key={k} className="flex gap-2">
                                         <span className="font-medium text-muted-foreground min-w-[80px]">{k.replace(/_/g, ' ')}:</span>
-                                        <span>{String(v ?? '—')}</span>
+                                        <span>{formatMetadataValue(v)}</span>
                                     </div>
                                 ))}
                             </div>
-                        ) : String(item)}
+                        ) : formatMetadataValue(item)}
                     </div>
                 ))}
             </div>
         );
+    } else if (propType.startsWith('ref:') || (typeof field.value === 'object' && field.value !== null)) {
+        icon = <Tag className="size-3.5" />;
+        displayValue = formatMetadataValue(field.value);
     } else if (propType.includes('date') || (typeof field.value === 'string' && /^\d{4}-\d{2}-\d{2}/.test(field.value))) {
         icon = <Calendar className="size-3.5" />;
         displayValue = formatDate(String(field.value));
@@ -339,7 +423,7 @@ function FormattedField({ fieldKey, field, propertyDef }: {
         displayValue = <Badge variant="secondary">{String(field.value)}</Badge>;
     } else {
         icon = <Type className="size-3.5" />;
-        displayValue = String(field.value ?? '—');
+        displayValue = formatMetadataValue(field.value);
     }
 
     return (
@@ -613,7 +697,7 @@ export function FilesBrowserSection({
             {/* Content with optional detail panel */}
             <div className="flex-1 min-h-0">
                 {selectedFileId ? (
-                    <ResizablePanelGroup direction="horizontal" className="h-full rounded-lg border">
+                    <ResizablePanelGroup orientation="horizontal" className="h-full rounded-lg border">
                         <ResizablePanel defaultSize={55} minSize={35}>
                             <ScrollArea className="h-full">
                                 <FilesTable groups={groups} selectedId={selectedFileId} onSelect={setSelectedFileId} onDelete={onDelete} />

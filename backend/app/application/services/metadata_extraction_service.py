@@ -70,14 +70,15 @@ class MetadataExtractionService:
             )
             return {}, [], ""
 
-        if not concept.properties:
+        resolved_properties = await self._resolve_properties(concept)
+        if not resolved_properties:
             logger.info(
-                "Concept '%s' has no properties defined — skipping extraction",
+                "Concept '%s' has no resolved properties — skipping extraction",
                 concept.id,
             )
             return {}, [], ""
 
-        # Build template fields from concept properties
+        # Build template fields from resolved properties (ancestors + mixins + self)
         template_fields = [
             {
                 "name": prop.name,
@@ -85,7 +86,7 @@ class MetadataExtractionService:
                 "required": prop.required,
                 "description": prop.description,
             }
-            for prop in concept.properties
+            for prop in resolved_properties
         ]
 
         # If LLM is available, use it for extraction
@@ -174,6 +175,26 @@ class MetadataExtractionService:
                     metadata[name] = entry
 
         return metadata
+
+    async def _resolve_properties(self, concept: OntologyConcept) -> list[Any]:
+        """Resolve properties for extraction: ancestors + mixins + own fields."""
+        ancestors = await self._ontology_repo.get_ancestors(concept.id)
+        chain = ancestors + [concept]  # root -> leaf
+
+        mixin_cache: dict[str, Any] = {}
+        resolved: dict[str, Any] = {}
+        for node in chain:
+            for mixin_id in node.mixins:
+                if mixin_id not in mixin_cache:
+                    mixin_cache[mixin_id] = await self._ontology_repo.get_mixin(mixin_id)
+                mixin = mixin_cache.get(mixin_id)
+                if mixin:
+                    for prop in mixin.properties:
+                        resolved[prop.name] = prop
+            for prop in node.properties:
+                resolved[prop.name] = prop
+
+        return list(resolved.values())
 
 
 # ── Value Normalization (Language-aware: NL/EN) ──────────────────────
