@@ -1,0 +1,14 @@
+# Parent inference heuristics configuration
+# Used by OntologyTypeAssistantService._resolve_parent() to match
+# keyword patterns in concepts to candidate parent IDs.
+
+rules:
+  - keywords: ["blog", "article", "post", "news", "whitepaper"]
+    candidates: ["Document", "Report"]
+  - keywords: ["email", "message", "chat", "notification"]
+    candidates: ["Message", "Email"]
+  - keywords: ["record", "entry", "measurement", "transaction", "dataset"]
+    candidates: ["DataRecord"]
+
+# Fallback parent ID when no keyword rules match
+default_fallback: "Document"

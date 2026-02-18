@@ -15,16 +15,82 @@ import logging
 import re
 import time
 from collections.abc import Iterable
+from pathlib import Path
 from typing import Any
 
 import httpx
+import yaml
 
 from app.application.interfaces import OntologyRepository
 from app.application.interfaces.chat_provider import ChatProvider
 from app.application.services.llm_usage_logger import LLMUsageLogger
-from app.domain.entities import ChatMessage, OntologyConcept
+from app.domain.entities import (
+    ChatMessage,
+    CreateConceptDraft,
+    ExtractionTemplate,
+    OntologyConcept,
+    OntologyTypeSuggestion,
+    ReferenceItem,
+)
 
 logger = logging.getLogger(__name__)
+
+# ── Module-level constants ────────────────────────────────────────────
+
+LLM_MAX_TOKENS = 2200
+"""Maximum tokens for the LLM suggestion completion."""
+
+MAX_SIMILAR_CONCEPTS = 10
+"""Maximum number of similar concepts used as blueprint context."""
+
+MAX_REFERENCE_URLS = 10
+"""Maximum number of reference URLs to fetch."""
+
+REFERENCE_FETCH_TIMEOUT_S = 8.0
+"""Timeout in seconds for individual reference page fetches."""
+
+MAX_REFERENCE_TITLE_CHARS = 180
+"""Maximum character length for reference page titles."""
+
+MAX_REFERENCE_SUMMARY_CHARS = 700
+"""Maximum character length for reference page summaries."""
+
+MAX_PROMPT_SYNONYMS = 8
+"""Maximum synonyms per concept included in the prompt context."""
+
+MAX_PROMPT_PROPERTIES = 12
+"""Maximum properties per concept included in the prompt context."""
+
+MAX_PROMPT_RELATIONSHIPS = 8
+"""Maximum relationships per concept included in the prompt context."""
+
+MAX_PROMPT_HINTS = 12
+"""Maximum classification hints per concept included in the prompt context."""
+
+MAX_PROMPT_FILE_PATTERNS = 8
+"""Maximum file patterns per concept included in the prompt context."""
+
+MAX_PROMPT_REFERENCES = 8
+"""Maximum external references included in the prompt context."""
+
+# ── Parent inference rules loaded from YAML config ────────────────────
+
+_INFERENCE_RULES_PATH = Path(__file__).resolve().parents[2] / "config" / "parent_inference_rules.yaml"
+
+
+def _load_parent_inference_rules() -> tuple[list[dict], str]:
+    """Load keyword→parent rules from the YAML config file."""
+    try:
+        with open(_INFERENCE_RULES_PATH, encoding="utf-8") as fh:
+            data = yaml.safe_load(fh) or {}
+        rules = data.get("rules", [])
+        fallback = data.get("default_fallback", "Document")
+        return rules, fallback
+    except FileNotFoundError:
+        logger.warning("Parent inference rules not found at %s, using empty rules", _INFERENCE_RULES_PATH)
+        return [], "Document"
+
+_PARENT_INFERENCE_RULES, _PARENT_DEFAULT_FALLBACK = _load_parent_inference_rules()
 
 _DEFAULT_REFERENCE_URLS = [
     "https://schema.org/Article",
@@ -95,11 +161,13 @@ class OntologyTypeAssistantService:
         chat_provider: ChatProvider | None = None,
         model: str = "",
         usage_logger: LLMUsageLogger | None = None,
+        http_client: httpx.AsyncClient | None = None,
     ):
         self._ontology_repo = ontology_repo
         self._chat_provider = chat_provider
         self._model = model
         self._usage_logger = usage_logger
+        self._http_client = http_client
 
     async def suggest_type(
         self,
@@ -111,7 +179,7 @@ class OntologyTypeAssistantService:
         style_preferences: list[str] | None = None,
         reference_urls: list[str] | None = None,
         include_internet_research: bool = True,
-    ) -> dict[str, Any]:
+    ) -> OntologyTypeSuggestion:
         """Generate an editable L3 concept draft with rationale."""
         if not name.strip():
             raise ValueError("name is required")
@@ -145,7 +213,7 @@ class OntologyTypeAssistantService:
                     domain_context=domain_context,
                     references=references,
                 )
-            except Exception as exc:
+            except (json.JSONDecodeError, httpx.HTTPError, ValueError, RuntimeError) as exc:
                 logger.exception("LLM suggestion failed, falling back to deterministic draft")
                 fallback = self._suggest_without_llm(
                     name=name,
@@ -153,10 +221,10 @@ class OntologyTypeAssistantService:
                     parent=parent,
                     inherited_property_names=inherited_property_names,
                 )
-                fallback["warnings"].append(
+                fallback.warnings.append(
                     f"AI generation failed and fallback was used: {str(exc)[:200]}"
                 )
-                fallback["references"] = references
+                fallback.references = references
                 return fallback
 
         fallback = self._suggest_without_llm(
@@ -165,8 +233,8 @@ class OntologyTypeAssistantService:
             parent=parent,
             inherited_property_names=inherited_property_names,
         )
-        fallback["warnings"].append("LLM provider is not configured; deterministic draft used.")
-        fallback["references"] = references
+        fallback.warnings.append("LLM provider is not configured; deterministic draft used.")
+        fallback.references = references
         return fallback
 
     async def _suggest_with_llm(
@@ -180,10 +248,11 @@ class OntologyTypeAssistantService:
         similar_concepts: list[OntologyConcept],
         style_preferences: list[str],
         domain_context: str,
-        references: list[dict[str, str]],
-    ) -> dict[str, Any]:
+        references: list[ReferenceItem],
+    ) -> OntologyTypeSuggestion:
         """Generate suggestion via chat provider and normalize output."""
         lineage = [*ancestors, parent]
+        references_dicts = [{"url": r.url, "title": r.title, "summary": r.summary} for r in references]
         context_payload = {
             "goal": {
                 "name": name,
@@ -212,23 +281,23 @@ class OntologyTypeAssistantService:
                     "label": c.label,
                     "inherits": c.inherits,
                     "description": c.description,
-                    "synonyms": c.synonyms[:8],
-                    "properties": [self._property_to_dict(p) for p in c.properties[:12]],
-                    "relationships": [self._relationship_to_dict(r) for r in c.relationships[:8]],
+                    "synonyms": c.synonyms[:MAX_PROMPT_SYNONYMS],
+                    "properties": [self._property_to_dict(p) for p in c.properties[:MAX_PROMPT_PROPERTIES]],
+                    "relationships": [self._relationship_to_dict(r) for r in c.relationships[:MAX_PROMPT_RELATIONSHIPS]],
                     "classification_hints": (
-                        c.extraction_template.classification_hints[:12]
+                        c.extraction_template.classification_hints[:MAX_PROMPT_HINTS]
                         if c.extraction_template
                         else []
                     ),
                     "file_patterns": (
-                        c.extraction_template.file_patterns[:8]
+                        c.extraction_template.file_patterns[:MAX_PROMPT_FILE_PATTERNS]
                         if c.extraction_template
                         else []
                     ),
                 }
                 for c in similar_concepts
             ],
-            "external_references": references[:8],
+            "external_references": references_dicts[:MAX_PROMPT_REFERENCES],
         }
 
         messages = [
@@ -247,7 +316,7 @@ class OntologyTypeAssistantService:
             messages=messages,
             model=self._model,
             temperature=0.15,
-            max_tokens=2200,
+            max_tokens=LLM_MAX_TOKENS,
         )
         duration_ms = int((time.monotonic() - start) * 1000)
 
@@ -262,7 +331,7 @@ class OntologyTypeAssistantService:
             )
 
         parsed = json.loads(self._extract_json(result.content))
-        payload = self._normalize_payload(
+        draft = self._normalize_payload(
             raw_payload=parsed.get("payload", {}),
             fallback_name=name,
             fallback_description=description,
@@ -271,22 +340,21 @@ class OntologyTypeAssistantService:
         )
 
         warnings = _dedupe_list(parsed.get("warnings", []))
-        resolved_parent = await self._ontology_repo.get_concept(payload["inherits"])
+        resolved_parent = await self._ontology_repo.get_concept(draft.inherits)
         if resolved_parent is None:
             warnings.append(
-                f"Suggested parent '{payload['inherits']}' was unknown and was replaced by '{parent.id}'."
+                f"Suggested parent '{draft.inherits}' was unknown and was replaced by '{parent.id}'."
             )
-            payload["inherits"] = parent.id
+            draft.inherits = parent.id
 
-        suggestion = {
-            "payload": payload,
-            "rationale": str(parsed.get("rationale", "")).strip(),
-            "parent_reasoning": str(parsed.get("parent_reasoning", "")).strip(),
-            "adaptation_tips": _dedupe_list(parsed.get("adaptation_tips", [])),
-            "warnings": warnings,
-            "references": references,
-        }
-        return suggestion
+        return OntologyTypeSuggestion(
+            payload=draft,
+            rationale=str(parsed.get("rationale", "")).strip(),
+            parent_reasoning=str(parsed.get("parent_reasoning", "")).strip(),
+            adaptation_tips=_dedupe_list(parsed.get("adaptation_tips", [])),
+            warnings=warnings,
+            references=references,
+        )
 
     def _suggest_without_llm(
         self,
@@ -295,7 +363,7 @@ class OntologyTypeAssistantService:
         description: str,
         parent: OntologyConcept,
         inherited_property_names: set[str],
-    ) -> dict[str, Any]:
+    ) -> OntologyTypeSuggestion:
         """Deterministic fallback suggestion when no LLM is configured."""
         slug = _to_kebab_case(name)
         hints = _dedupe_list([name, slug, name.lower().replace("-", " ")])
@@ -342,40 +410,38 @@ class OntologyTypeAssistantService:
             p for p in default_properties if p["name"].lower() not in inherited_property_names
         ]
 
-        payload = {
-            "id": slug,
-            "label": name.strip(),
-            "inherits": parent.id,
-            "description": (
+        draft = CreateConceptDraft(
+            id=slug,
+            label=name.strip(),
+            inherits=parent.id,
+            description=(
                 description.strip()
                 or f"A specialized {parent.label} concept for '{name.strip()}' content."
             ),
-            "abstract": False,
-            "synonyms": _dedupe_list([name.lower(), slug.replace("-", " ")]),
-            "mixins": [],
-            "properties": filtered_properties,
-            "relationships": [],
-            "extraction_template": {
-                "classification_hints": hints,
-                "file_patterns": [f"**/{slug}/**", f"**/{slug}s/**"],
-            },
-        }
+            abstract=False,
+            synonyms=_dedupe_list([name.lower(), slug.replace("-", " ")]),
+            mixins=[],
+            properties=filtered_properties,
+            relationships=[],
+            extraction_template=ExtractionTemplate(
+                classification_hints=hints,
+                file_patterns=[f"**/{slug}/**", f"**/{slug}s/**"],
+            ),
+        )
 
-        return {
-            "payload": payload,
-            "rationale": (
+        return OntologyTypeSuggestion(
+            payload=draft,
+            rationale=(
                 "Generated from ontology parent context with a deterministic template "
                 "because AI suggestions were unavailable."
             ),
-            "parent_reasoning": f"Selected parent '{parent.id}' based on ontology context.",
-            "adaptation_tips": [
+            parent_reasoning=f"Selected parent '{parent.id}' based on ontology context.",
+            adaptation_tips=[
                 "Adjust required flags based on actual extraction confidence.",
                 "Keep only fields that are consistently observable in source documents.",
                 "Refine classification hints to reduce overlap with sibling concepts.",
             ],
-            "warnings": [],
-            "references": [],
-        }
+        )
 
     async def _resolve_parent(
         self,
@@ -396,22 +462,18 @@ class OntologyTypeAssistantService:
 
         text = f"{name} {description}".lower()
 
-        if any(k in text for k in ("blog", "article", "post", "news", "whitepaper")):
-            if "Document" in by_id:
-                return by_id["Document"]
-            if "Report" in by_id:
-                return by_id["Report"]
-        if any(k in text for k in ("email", "message", "chat", "notification")):
-            if "Message" in by_id:
-                return by_id["Message"]
-            if "Email" in by_id:
-                return by_id["Email"]
-        if any(k in text for k in ("record", "entry", "measurement", "transaction", "dataset")):
-            if "DataRecord" in by_id:
-                return by_id["DataRecord"]
+        # Apply keyword rules from YAML config
+        for rule in _PARENT_INFERENCE_RULES:
+            keywords = rule.get("keywords", [])
+            candidates = rule.get("candidates", [])
+            if any(kw in text for kw in keywords):
+                for candidate_id in candidates:
+                    if candidate_id in by_id:
+                        return by_id[candidate_id]
 
-        if "Document" in by_id:
-            return by_id["Document"]
+        # Default fallback from config
+        if _PARENT_DEFAULT_FALLBACK in by_id:
+            return by_id[_PARENT_DEFAULT_FALLBACK]
 
         non_abstract = [c for c in all_concepts if not c.abstract]
         if non_abstract:
@@ -446,7 +508,7 @@ class OntologyTypeAssistantService:
                     continue
                 seen.add(concept.id)
                 results.append(concept)
-                if len(results) >= 10:
+                if len(results) >= MAX_SIMILAR_CONCEPTS:
                     return results
 
         children = await self._ontology_repo.get_children(parent_id)
@@ -455,7 +517,7 @@ class OntologyTypeAssistantService:
                 continue
             seen.add(child.id)
             results.append(child)
-            if len(results) >= 10:
+            if len(results) >= MAX_SIMILAR_CONCEPTS:
                 break
 
         return results
@@ -465,14 +527,19 @@ class OntologyTypeAssistantService:
         *,
         extra_urls: list[str],
         include_internet_research: bool,
-    ) -> list[dict[str, str]]:
+    ) -> list[ReferenceItem]:
         """Fetch concise external references used in the suggestion prompt."""
-        urls = _dedupe_list([*_DEFAULT_REFERENCE_URLS, *extra_urls])[:10]
+        urls = _dedupe_list([*_DEFAULT_REFERENCE_URLS, *extra_urls])[:MAX_REFERENCE_URLS]
 
         if not include_internet_research:
-            return [{"url": u, "title": "", "summary": "", "source_type": "web"} for u in urls]
+            return [ReferenceItem(url=u) for u in urls]
 
-        async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+        if self._http_client:
+            tasks = [self._fetch_reference(self._http_client, u) for u in urls]
+            results = await _gather_safe(tasks)
+            return [r for r in results if r is not None]
+
+        async with httpx.AsyncClient(timeout=REFERENCE_FETCH_TIMEOUT_S, follow_redirects=True) as client:
             tasks = [self._fetch_reference(client, u) for u in urls]
             results = await _gather_safe(tasks)
         return [r for r in results if r is not None]
@@ -481,7 +548,7 @@ class OntologyTypeAssistantService:
         self,
         client: httpx.AsyncClient,
         url: str,
-    ) -> dict[str, str] | None:
+    ) -> ReferenceItem | None:
         """Fetch and summarize a reference page."""
         try:
             response = await client.get(url)
@@ -497,12 +564,11 @@ class OntologyTypeAssistantService:
             cleaned = html.unescape(cleaned)
             cleaned = re.sub(r"\s+", " ", cleaned).strip()
 
-            return {
-                "url": url,
-                "title": title[:180],
-                "summary": cleaned[:700],
-                "source_type": "web",
-            }
+            return ReferenceItem(
+                url=url,
+                title=title[:MAX_REFERENCE_TITLE_CHARS],
+                summary=cleaned[:MAX_REFERENCE_SUMMARY_CHARS],
+            )
         except Exception:
             return None
 
@@ -514,7 +580,7 @@ class OntologyTypeAssistantService:
         fallback_description: str,
         fallback_parent_id: str,
         inherited_property_names: set[str],
-    ) -> dict[str, Any]:
+    ) -> CreateConceptDraft:
         """Normalize and harden LLM payload into API-safe shape."""
         if not isinstance(raw_payload, dict):
             raw_payload = {}
@@ -560,11 +626,11 @@ class OntologyTypeAssistantService:
             relationships.append(rel)
         relationships = _dedupe_relationships(relationships)
 
-        extraction_template = raw_payload.get("extraction_template", {})
-        if not isinstance(extraction_template, dict):
-            extraction_template = {}
-        hints = _dedupe_list(extraction_template.get("classification_hints", []))
-        patterns = _dedupe_list(extraction_template.get("file_patterns", []))
+        extraction_template_raw = raw_payload.get("extraction_template", {})
+        if not isinstance(extraction_template_raw, dict):
+            extraction_template_raw = {}
+        hints = _dedupe_list(extraction_template_raw.get("classification_hints", []))
+        patterns = _dedupe_list(extraction_template_raw.get("file_patterns", []))
 
         synonyms = _dedupe_list(raw_payload.get("synonyms", []))
         mixins = _dedupe_list(raw_payload.get("mixins", []))
@@ -584,21 +650,21 @@ class OntologyTypeAssistantService:
         if cleaned_properties:
             properties = cleaned_properties
 
-        return {
-            "id": concept_id,
-            "label": label,
-            "inherits": inherits,
-            "description": str(raw_payload.get("description") or fallback_description).strip(),
-            "abstract": False,
-            "synonyms": synonyms,
-            "mixins": mixins,
-            "properties": properties,
-            "relationships": relationships,
-            "extraction_template": {
-                "classification_hints": hints,
-                "file_patterns": patterns,
-            },
-        }
+        return CreateConceptDraft(
+            id=concept_id,
+            label=label,
+            inherits=inherits,
+            description=str(raw_payload.get("description") or fallback_description).strip(),
+            abstract=False,
+            synonyms=synonyms,
+            mixins=mixins,
+            properties=properties,
+            relationships=relationships,
+            extraction_template=ExtractionTemplate(
+                classification_hints=hints,
+                file_patterns=patterns,
+            ),
+        )
 
     @staticmethod
     def _property_to_dict(prop) -> dict[str, Any]:

@@ -9,6 +9,9 @@ from app.application.schemas.ontology import (
     ConceptSummarySchema,
     ConceptTreeNodeSchema,
     CreateConceptSchema,
+    CreateExtractionTemplateSchema,
+    CreateConceptPropertySchema,
+    CreateConceptRelationshipSchema,
     EmbeddedTypePropertySchema,
     EmbeddedTypeSchema,
     ExtractionTemplateSchema,
@@ -16,6 +19,7 @@ from app.application.schemas.ontology import (
     OntologyStatsSchema,
     SuggestOntologyTypeRequestSchema,
     SuggestOntologyTypeResponseSchema,
+    SuggestionReferenceSchema,
 )
 from app.application.services.ontology_service import (
     ConceptAlreadyExistsError,
@@ -31,6 +35,7 @@ from app.domain.entities import (
     ConceptRelationship,
     ExtractionTemplate,
     OntologyConcept,
+    OntologyTypeSuggestion,
 )
 from app.infrastructure.dependencies import (
     get_ontology_service,
@@ -318,6 +323,48 @@ async def delete_concept(
         )
 
 
+def _to_suggestion_response(
+    suggestion: OntologyTypeSuggestion,
+) -> SuggestOntologyTypeResponseSchema:
+    """Map a domain OntologyTypeSuggestion to the API response schema."""
+    draft = suggestion.payload
+    et = draft.extraction_template
+    return SuggestOntologyTypeResponseSchema(
+        payload=CreateConceptSchema(
+            id=draft.id,
+            label=draft.label,
+            inherits=draft.inherits,
+            description=draft.description,
+            abstract=draft.abstract,
+            synonyms=draft.synonyms,
+            mixins=draft.mixins,
+            properties=[
+                CreateConceptPropertySchema(**p) for p in draft.properties
+            ],
+            relationships=[
+                CreateConceptRelationshipSchema(**r) for r in draft.relationships
+            ],
+            extraction_template=CreateExtractionTemplateSchema(
+                classification_hints=et.classification_hints,
+                file_patterns=et.file_patterns,
+            ) if et else None,
+        ),
+        rationale=suggestion.rationale,
+        parent_reasoning=suggestion.parent_reasoning,
+        adaptation_tips=suggestion.adaptation_tips,
+        warnings=suggestion.warnings,
+        references=[
+            SuggestionReferenceSchema(
+                url=r.url,
+                title=r.title,
+                summary=r.summary,
+                source_type=r.source_type,
+            )
+            for r in suggestion.references
+        ],
+    )
+
+
 @router.post(
     "/suggestions/type",
     response_model=SuggestOntologyTypeResponseSchema,
@@ -328,7 +375,7 @@ async def suggest_type(
 ):
     """Generate an AI-assisted draft for a new L3 ontology type."""
     try:
-        return await service.suggest_type(
+        suggestion = await service.suggest_type(
             name=body.name,
             description=body.description,
             inherits=body.inherits,
@@ -337,6 +384,7 @@ async def suggest_type(
             reference_urls=body.reference_urls,
             include_internet_research=body.include_internet_research,
         )
+        return _to_suggestion_response(suggestion)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

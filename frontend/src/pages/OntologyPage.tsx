@@ -22,7 +22,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { CreateConceptDialog } from '@/pages/CreateConceptDialog';
+import { CreateConceptDialog } from '@/pages/create-concept-wizard/CreateConceptDialog';
 import type {
     ConceptDetail,
     ConceptTreeNode,
@@ -118,6 +118,18 @@ function TreeNode({
     const hasChildren = node.children.length > 0;
     const isSelected = selectedId === node.id;
     const [expanded, setExpanded] = useState(depth < 2);
+
+    // Auto-expand if the selected node is a descendant
+    const containsSelected = useMemo(() => {
+        if (!selectedId) return false;
+        const find = (n: ConceptTreeNode): boolean =>
+            n.id === selectedId || n.children.some(find);
+        return node.children.some(find);
+    }, [node, selectedId]);
+
+    useEffect(() => {
+        if (containsSelected) setExpanded(true);
+    }, [containsSelected]);
 
     // Auto-expand if search matches a descendant
     const matchesSearch = useMemo(() => {
@@ -780,9 +792,10 @@ export function OntologyPage() {
 
     // ── Handlers ────────────────────────────────────────────────────
 
-    const handleCreated = useCallback(() => {
+    const handleCreated = useCallback((createdId?: string) => {
         setCreateOpen(false);
         fetchData();
+        if (createdId) setSelectedId(createdId);
     }, [fetchData]);
 
     const handleDelete = useCallback(async (id: string) => {

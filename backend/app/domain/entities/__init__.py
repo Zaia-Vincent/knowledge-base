@@ -10,6 +10,9 @@ from .ontology_concept import (
     Mixin,
     EmbeddedType,
     EmbeddedTypeProperty,
+    ReferenceItem,
+    CreateConceptDraft,
+    OntologyTypeSuggestion,
 )
 from .processed_file import (
     ProcessedFile,
@@ -41,6 +44,9 @@ __all__ = [
     "Mixin",
     "EmbeddedType",
     "EmbeddedTypeProperty",
+    "ReferenceItem",
+    "CreateConceptDraft",
+    "OntologyTypeSuggestion",
     "ProcessedFile",
     "ProcessingStatus",
     "ClassificationSignal",

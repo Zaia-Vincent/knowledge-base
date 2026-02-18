@@ -1,5 +1,7 @@
 """Domain entities for ontology concepts — pure Python, no framework dependencies."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -110,3 +112,45 @@ class OntologyConcept:
         if self.extraction_template:
             hints.extend(self.extraction_template.classification_hints)
         return hints
+
+
+# ── Ontology Type Suggestion (L3 Wizard) ─────────────────────────────
+
+
+@dataclass
+class ReferenceItem:
+    """An external reference used during ontology type suggestion."""
+
+    url: str
+    title: str = ""
+    summary: str = ""
+    source_type: str = "web"
+
+
+@dataclass
+class CreateConceptDraft:
+    """Draft payload for a new ontology concept (output of AI suggestion)."""
+
+    id: str
+    label: str
+    inherits: str
+    description: str = ""
+    abstract: bool = False
+    synonyms: list[str] = field(default_factory=list)
+    mixins: list[str] = field(default_factory=list)
+    properties: list[dict[str, Any]] = field(default_factory=list)
+    relationships: list[dict[str, Any]] = field(default_factory=list)
+    extraction_template: ExtractionTemplate | None = None
+
+
+@dataclass
+class OntologyTypeSuggestion:
+    """AI-assisted concept suggestion with rationale and metadata."""
+
+    payload: CreateConceptDraft
+    rationale: str = ""
+    parent_reasoning: str = ""
+    adaptation_tips: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    references: list[ReferenceItem] = field(default_factory=list)
+
