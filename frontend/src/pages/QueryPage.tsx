@@ -184,7 +184,7 @@ export function QueryPage() {
                                 <MatchCard
                                     key={match.file_id}
                                     match={match}
-                                    onClick={() => navigate(`/files/${match.file_id}`)}
+                                    onClick={() => navigate('/data-sources')}
                                 />
                             ))
                         )}

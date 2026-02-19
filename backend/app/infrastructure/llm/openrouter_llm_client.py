@@ -113,6 +113,28 @@ IMPORTANT RULES:
 - Indicate page ranges (e.g. "1-2", "3-3") for each document.
 - After submitting all documents, respond with a brief summary of what you processed."""
 
+_IMAGE_TOOL_SYSTEM_PROMPT = """You are a webpage analysis expert. You will receive a screenshot of a web page and a catalogue of document/data categories (concepts).
+
+YOUR WORKFLOW — follow these steps precisely:
+1. Analyze the screenshot carefully. Identify what type of content the page contains.
+2. Determine the best-matching concept from the catalogue.
+3. Call the `get_extraction_schema` tool with the concept ID to get the full list of properties to extract.
+4. Extract all available properties from the visible content in the screenshot.
+5. Call the `submit_document` tool with the extracted data.
+
+IMPORTANT RULES:
+- Focus on the PRIMARY content of the page, not navigation, ads, or footer elements.
+- IGNORE any cookie consent banners, cookie policy text, privacy policy notices, GDPR notices, and similar compliance popups or overlays. These are NOT part of the page's primary content.
+- IGNORE footer links to cookie policies, privacy policies, or legal pages.
+- If the page contains a list or table of items that each match a concept, submit EACH item separately.
+- For dates, use ISO 8601 format (YYYY-MM-DD).
+- For monetary amounts, use plain numbers without currency symbols.
+- For reference fields (e.g. vendor, related_party), return a JSON object: {"label": "Name"}
+- For array/list fields, return a proper JSON array: [{"field": "value"}, ...]
+- Use null for properties that cannot be read from the screenshot.
+- If NO concept from the catalogue clearly matches, you MUST still call `get_extraction_schema` for the concept "Document" (the generic L1 fallback) and then call `submit_document` with the extracted data. NEVER skip tool calls — every page must produce at least one submission.
+- After submitting all items, respond with a brief summary of what you extracted."""
+
 # Tool definitions for LLM tool calling
 _TOOL_GET_EXTRACTION_SCHEMA = {
     "type": "function",
@@ -200,6 +222,11 @@ class OpenRouterLLMClient(LLMClient):
             excerpt_length=len(request.text_excerpt),
             num_concepts=len(request.available_concepts),
         )
+        plog.detail(
+            "Prompt selected: CLASSIFICATION_SYSTEM_PROMPT",
+            pipeline="text-classification",
+            content_type="text_excerpt",
+        )
 
         # Format the concept list for the prompt
         concepts_text = "\n".join(
@@ -256,6 +283,12 @@ class OpenRouterLLMClient(LLMClient):
             concept=request.concept_id,
             num_fields=len(request.template_fields),
         )
+        plog.detail(
+            "Prompt selected: EXTRACTION_SYSTEM_PROMPT",
+            pipeline="text-metadata-extraction",
+            content_type="text",
+            concept_id=request.concept_id,
+        )
 
         fields_text = "\n".join(
             f"- **{f['name']}** (type: {f['type']}, required: {f.get('required', False)}): "
@@ -311,6 +344,11 @@ class OpenRouterLLMClient(LLMClient):
             model=self._model,
             mime_type=request.mime_type,
         )
+        plog.detail(
+            "Prompt selected: OCR_SYSTEM_PROMPT",
+            pipeline="image-ocr",
+            content_type=request.mime_type,
+        )
 
         messages = [
             ChatMessage(role="system", content=_OCR_SYSTEM_PROMPT),
@@ -353,6 +391,12 @@ class OpenRouterLLMClient(LLMClient):
             filename=request.filename,
             num_concepts=len(request.available_concepts),
             pdf_size_kb=f"{len(request.pdf_base64) * 3 // 4 // 1024}",
+        )
+        plog.detail(
+            "Prompt selected: PDF_PROCESSING_SYSTEM_PROMPT",
+            pipeline="pdf-single-pass",
+            content_type="application/pdf",
+            filename=request.filename,
         )
 
         # Build concept descriptions with their extraction templates
@@ -468,6 +512,13 @@ class OpenRouterLLMClient(LLMClient):
             num_concepts=len(available_concepts),
             pdf_size_kb=f"{len(pdf_base64) * 3 // 4 // 1024}",
         )
+        plog.detail(
+            "Prompt selected: PDF_TOOL_SYSTEM_PROMPT",
+            pipeline="pdf-tool-calling",
+            content_type="application/pdf",
+            filename=filename,
+            tools="get_extraction_schema, submit_document",
+        )
 
         # Build the concept catalogue for the prompt (no template fields — LLM fetches on demand)
         concepts_text_parts = []
@@ -581,6 +632,133 @@ class OpenRouterLLMClient(LLMClient):
             doc.model = result.model
             doc.tools_called = tool_names
             doc.tool_call_count = total_tool_calls
+
+        return submitted_documents
+
+    async def process_image_with_tools(
+        self,
+        image_base64: str,
+        mime_type: str,
+        source_url: str,
+        available_concepts: list[dict[str, Any]],
+        tool_handler: ToolHandler,
+    ) -> list[LLMPdfProcessingResponse]:
+        """Process a webpage screenshot using vision + tool calling.
+
+        Same workflow as process_pdf_with_tools but with an image content part.
+        The LLM sees the screenshot and uses tools to classify and extract data.
+        """
+        plog.step_start(
+            PipelineStage.PDF_LLM,
+            f"Starting tool-based image processing for '{source_url}'",
+            model=self._pdf_model,
+            num_concepts=len(available_concepts),
+            image_size_kb=f"{len(image_base64) * 3 // 4 // 1024}",
+        )
+        plog.detail(
+            "Prompt selected: IMAGE_TOOL_SYSTEM_PROMPT",
+            pipeline="image-tool-calling",
+            content_type=mime_type,
+            source_url=source_url,
+            tools="get_extraction_schema, submit_document",
+        )
+
+        # Build the concept catalogue
+        concepts_text_parts = []
+        for concept in available_concepts:
+            desc = (
+                f"- **{concept['id']}** ({concept['label']}): "
+                f"{concept.get('description', 'N/A')}. "
+                f"Synonyms: {', '.join(concept.get('synonyms', []))}. "
+                f"Hints: {', '.join(concept.get('hints', []))}"
+            )
+            concepts_text_parts.append(desc)
+
+        concepts_text = "\n".join(concepts_text_parts)
+
+        user_prompt = (
+            f"Analyze the screenshot of this web page: {source_url}\n\n"
+            f"## Available Content Categories\n\n{concepts_text}\n\n"
+            f"Follow your workflow: identify the content type, fetch the schema, "
+            f"extract properties, and submit each item found."
+        )
+
+        messages = [
+            ChatMessage(role="system", content=_IMAGE_TOOL_SYSTEM_PROMPT),
+            ChatMessage(
+                role="user",
+                content=[
+                    ContentPart(
+                        type="image_url",
+                        image_url={
+                            "url": f"data:{mime_type};base64,{image_base64}"
+                        },
+                    ),
+                    ContentPart(type="text", text=user_prompt),
+                ],
+            ),
+        ]
+
+        tools = [_TOOL_GET_EXTRACTION_SCHEMA, _TOOL_SUBMIT_DOCUMENT]
+
+        # Collect submitted documents via the tool handler
+        submitted_documents: list[LLMPdfProcessingResponse] = []
+
+        async def _internal_tool_handler(
+            tool_name: str, args: dict[str, Any]
+        ) -> dict[str, Any]:
+            """Dispatch tool calls, collecting submit_document results."""
+            if tool_name == "submit_document":
+                doc = LLMPdfProcessingResponse(
+                    concept_id=args.get("concept_id", "Unknown"),
+                    confidence=float(args.get("confidence", 0.0)),
+                    reasoning=args.get("reasoning", ""),
+                    extracted_properties=args.get("extracted_properties", {}),
+                    summary=args.get("summary", ""),
+                    page_range=None,  # No page ranges for screenshots
+                )
+                submitted_documents.append(doc)
+                plog.detail(
+                    f"Content item submitted via tool",
+                    concept=doc.concept_id,
+                    confidence=f"{doc.confidence:.2f}",
+                    properties=len(doc.extracted_properties),
+                )
+                return {
+                    "status": "accepted",
+                    "document_index": len(submitted_documents),
+                }
+
+            # Delegate get_extraction_schema to the external handler
+            return await tool_handler(tool_name, args)
+
+        plog.detail("Starting tool-calling loop with LLM (image)")
+
+        result = await self._client.complete_with_tools(
+            messages,
+            self._pdf_model,
+            tools=tools,
+            tool_handler=_internal_tool_handler,
+            temperature=0.1,
+            max_tokens=8000,
+            max_iterations=10,
+        )
+
+        plog.step_complete(
+            PipelineStage.PDF_LLM,
+            f"Image processing complete for '{source_url}'",
+            items_found=len(submitted_documents),
+            total_tokens=result.usage.total_tokens,
+            final_message=result.content[:100] if result.content else "(none)",
+        )
+
+        # Attach usage/tool metadata
+        tool_names = sorted({"get_extraction_schema", "submit_document"}) if submitted_documents else []
+        for doc in submitted_documents:
+            doc.usage = result.usage
+            doc.model = result.model
+            doc.tools_called = tool_names
+            doc.tool_call_count = len(submitted_documents)
 
         return submitted_documents
 

@@ -12,7 +12,7 @@ from app.application.services import (
     ChatCompletionService,
     ClassificationService,
     ClientRecordService,
-    FileProcessingService,
+    ResourceProcessingService,
     LLMUsageLogger,
     MetadataExtractionService,
     OntologyService,
@@ -23,13 +23,14 @@ from app.infrastructure.database.repositories import (
     SQLAlchemyArticleRepository,
     SQLAlchemyServiceRequestLogRepository,
     SQLAlchemyClientRecordRepository,
-    SQLAlchemyFileRepository,
+    SQLAlchemyResourceRepository,
     SQLAlchemyOntologyRepository,
 )
 from app.infrastructure.extractors.multi_format_text_extractor import MultiFormatTextExtractor
 from app.infrastructure.llm.openrouter_llm_client import OpenRouterLLMClient
 from app.infrastructure.openrouter import OpenRouterClient
 from app.infrastructure.storage.local_file_storage import LocalFileStorage
+from app.application.services.sse_manager import SSEManager
 
 
 
@@ -105,14 +106,14 @@ async def get_ontology_type_assistant_service(
     )
 
 
-async def get_file_processing_service(
+async def get_resource_processing_service(
     session: AsyncSession = Depends(get_db_session),
-) -> AsyncGenerator[FileProcessingService, None]:
-    """Provides a FileProcessingService with storage, extraction, classification, and metadata."""
+) -> AsyncGenerator[ResourceProcessingService, None]:
+    """Provides a ResourceProcessingService with storage, extraction, classification, and metadata."""
     settings = get_settings()
 
-    # File infrastructure
-    file_repository = SQLAlchemyFileRepository(session)
+    # Resource infrastructure
+    resource_repository = SQLAlchemyResourceRepository(session)
     storage = LocalFileStorage(upload_dir=settings.upload_dir)
     extractor = MultiFormatTextExtractor()
 
@@ -152,8 +153,8 @@ async def get_file_processing_service(
 
     ontology_service = OntologyService(ontology_repository)
 
-    yield FileProcessingService(
-        file_repository=file_repository,
+    yield ResourceProcessingService(
+        file_repository=resource_repository,
         file_storage=storage,
         text_extractor=extractor,
         classification_service=classifier,
@@ -180,14 +181,50 @@ async def get_query_service(
     )
 
     ontology_repo = SQLAlchemyOntologyRepository(session)
-    file_repo = SQLAlchemyFileRepository(session)
+    resource_repo = SQLAlchemyResourceRepository(session)
     log_repo = SQLAlchemyServiceRequestLogRepository(session)
     usage_logger = LLMUsageLogger(log_repo)
 
     yield QueryService(
         chat_provider=provider,
         ontology_repo=ontology_repo,
-        file_repo=file_repo,
+        file_repo=resource_repo,
         usage_logger=usage_logger,
         model=settings.classification_model,
     )
+
+
+# ── Data Sources ─────────────────────────────────────────────────────
+
+# Module-level singleton so the same SSEManager is shared across
+# the BackgroundProcessor (started in lifespan) and SSE endpoint.
+_sse_manager = SSEManager()
+
+
+def get_sse_manager() -> SSEManager:
+    """Returns the singleton SSEManager instance."""
+    return _sse_manager
+
+
+async def get_data_source_service(
+    session: AsyncSession = Depends(get_db_session),
+) -> AsyncGenerator["DataSourceService", None]:
+    """Provides a DataSourceService with repository and storage wired up."""
+    from app.application.services.data_source_service import DataSourceService
+    from app.infrastructure.database.repositories import (
+        SQLAlchemyDataSourceRepository,
+        SQLAlchemyProcessingJobRepository,
+    )
+
+    settings = get_settings()
+
+    source_repo = SQLAlchemyDataSourceRepository(session)
+    job_repo = SQLAlchemyProcessingJobRepository(session)
+    storage = LocalFileStorage(upload_dir=settings.upload_dir)
+
+    yield DataSourceService(
+        source_repo=source_repo,
+        job_repo=job_repo,
+        file_storage=storage,
+    )
+

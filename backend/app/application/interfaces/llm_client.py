@@ -149,4 +149,30 @@ class LLMClient(ABC):
         """
         ...
 
+    @abstractmethod
+    async def process_image_with_tools(
+        self,
+        image_base64: str,
+        mime_type: str,
+        source_url: str,
+        available_concepts: list[dict[str, Any]],
+        tool_handler: ToolHandler,
+    ) -> list[LLMPdfProcessingResponse]:
+        """Process a webpage screenshot using vision + tool calling.
 
+        Same workflow as process_pdf_with_tools but with an image instead of PDF:
+        1. LLM sees the screenshot and identifies content type(s)
+        2. Calls get_extraction_schema to fetch properties for the matched concept
+        3. Calls submit_document for each piece of content found
+
+        Args:
+            image_base64: Base64-encoded screenshot (PNG/JPEG).
+            mime_type: Image MIME type (e.g. "image/png").
+            source_url: Original URL the screenshot was taken from.
+            available_concepts: Concept catalogue.
+            tool_handler: Callback for get_extraction_schema tool calls.
+
+        Returns:
+            List of processing results, one per detected content item.
+        """
+        ...

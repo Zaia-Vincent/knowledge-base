@@ -14,12 +14,14 @@ from .ontology_concept import (
     CreateConceptDraft,
     OntologyTypeSuggestion,
 )
-from .processed_file import (
-    ProcessedFile,
+from .resource import (
+    Resource,
     ProcessingStatus,
     ClassificationSignal,
     ClassificationResult,
 )
+from .data_source import DataSource, DataSourceType
+from .processing_job import ProcessingJob, JobStatus
 from .query import (
     MetadataFilter,
     QueryIntent,
@@ -47,10 +49,14 @@ __all__ = [
     "ReferenceItem",
     "CreateConceptDraft",
     "OntologyTypeSuggestion",
-    "ProcessedFile",
+    "Resource",
     "ProcessingStatus",
     "ClassificationSignal",
     "ClassificationResult",
+    "DataSource",
+    "DataSourceType",
+    "ProcessingJob",
+    "JobStatus",
     "MetadataFilter",
     "QueryIntent",
     "QueryMatch",

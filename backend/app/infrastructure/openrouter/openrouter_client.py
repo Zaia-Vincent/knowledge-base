@@ -420,6 +420,7 @@ class OpenRouterClient(ChatProvider):
             message = error.get("message", response.text)
         except Exception:
             message = response.text
+        message = self._with_auth_hint(response.status_code, message)
 
         raise ChatProviderError(
             provider=self.provider_name,
@@ -437,6 +438,7 @@ class OpenRouterClient(ChatProvider):
             message = error.get("message", body.decode())
         except Exception:
             message = body.decode(errors="replace")
+        message = self._with_auth_hint(status_code, message)
 
         raise ChatProviderError(
             provider=self.provider_name,
@@ -444,3 +446,18 @@ class OpenRouterClient(ChatProvider):
             message=message,
         )
 
+    @staticmethod
+    def _with_auth_hint(status_code: int, message: str) -> str:
+        """Attach a configuration hint for common OpenRouter auth failures."""
+        if status_code != 401:
+            return message
+
+        msg = (message or "").strip()
+        lower = msg.lower()
+        if "user not found" in lower or "unauthorized" in lower or "invalid" in lower:
+            return (
+                f"{msg} "
+                "[hint] Check OPENROUTER_API_KEY and ensure backend/.env is loaded "
+                "(or export OPENROUTER_API_KEY in your shell)."
+            ).strip()
+        return msg

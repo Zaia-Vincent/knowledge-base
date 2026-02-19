@@ -8,9 +8,11 @@ import {
     PanelLeftClose,
     PanelLeft,
     MessageCircle,
-    FileUp,
+    FileText,
     Layers,
     Search,
+    Database,
+    Cpu,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -37,9 +39,10 @@ interface NavGroup {
 const navItems: NavItem[] = [
     { label: 'Dashboard', path: '/', icon: <LayoutDashboard className="size-4" /> },
     { label: 'Chat', path: '/chat', icon: <MessageCircle className="size-4" /> },
-    { label: 'Files', path: '/files', icon: <FileUp className="size-4" /> },
     { label: 'Ontology', path: '/ontology', icon: <Layers className="size-4" /> },
     { label: 'Query', path: '/query', icon: <Search className="size-4" /> },
+    { label: 'Resources', path: '/resources', icon: <FileText className="size-4" /> },
+    { label: 'Data Sources', path: '/data-sources', icon: <Database className="size-4" /> },
 ];
 
 const navGroups: NavGroup[] = [
@@ -48,6 +51,7 @@ const navGroups: NavGroup[] = [
         icon: <Settings className="size-4" />,
         children: [
             { label: 'Theme Colors', path: '/setup/theme-colors', icon: <Palette className="size-4" /> },
+            { label: 'LLM Models', path: '/setup/model-settings', icon: <Cpu className="size-4" /> },
         ],
     },
 ];

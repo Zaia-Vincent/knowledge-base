@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Palette, Settings } from 'lucide-react';
+import { Palette, Settings, Cpu } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 const setupModules = [
@@ -8,6 +8,12 @@ const setupModules = [
         description: 'Customize light and dark mode colors for the application.',
         icon: <Palette className="size-5" />,
         path: '/setup/theme-colors',
+    },
+    {
+        title: 'LLM Models',
+        description: 'Configure which AI model to use for each processing type.',
+        icon: <Cpu className="size-5" />,
+        path: '/setup/model-settings',
     },
 ];
 

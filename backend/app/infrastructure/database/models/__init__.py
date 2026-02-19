@@ -11,7 +11,8 @@ from .ontology_models import (
     EmbeddedTypeModel,
     EmbeddedTypePropertyModel,
 )
-from .file_models import ProcessedFileModel
+from .resource_models import ResourceModel
+from .data_source_models import DataSourceModel, ProcessingJobModel
 
 __all__ = [
     "ArticleModel",
@@ -25,5 +26,7 @@ __all__ = [
     "MixinPropertyModel",
     "EmbeddedTypeModel",
     "EmbeddedTypePropertyModel",
-    "ProcessedFileModel",
+    "ResourceModel",
+    "DataSourceModel",
+    "ProcessingJobModel",
 ]

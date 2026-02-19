@@ -1,5 +1,24 @@
+import json
+import logging
+from pathlib import Path
+
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+
+_config_logger = logging.getLogger(__name__)
+
+_SETTINGS_FILE = Path("data/settings.json")
+_BACKEND_DIR = Path(__file__).resolve().parents[1]
+_ENV_FILES = (
+    _BACKEND_DIR / ".env",
+    ".env",
+)
+_MODEL_KEYS = frozenset({
+    "classification_model",
+    "extraction_model",
+    "pdf_processing_model",
+    "ontology_assistant_model",
+})
 
 
 class Settings(BaseSettings):
@@ -39,7 +58,26 @@ class Settings(BaseSettings):
     log_level_pipeline: str = "INFO"         # FileProcessingService pipeline
     log_level_openrouter: str = "INFO"       # OpenRouter LLM client
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    # Website capture (Playwright)
+    website_capture_viewport_width: int = 1280
+    website_capture_viewport_height: int = 800
+    website_capture_timeout: int = 30
+
+    model_config = {
+        "env_file": _ENV_FILES,
+        "env_file_encoding": "utf-8",
+    }
+
+    def model_post_init(self, __context: object) -> None:
+        """Merge runtime overrides from data/settings.json into model settings."""
+        if _SETTINGS_FILE.exists():
+            try:
+                overrides = json.loads(_SETTINGS_FILE.read_text("utf-8"))
+                for key in _MODEL_KEYS:
+                    if key in overrides and isinstance(overrides[key], str):
+                        object.__setattr__(self, key, overrides[key])
+            except Exception as exc:
+                _config_logger.warning("Could not load settings overrides: %s", exc)
 
 
 @lru_cache

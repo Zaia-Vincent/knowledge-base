@@ -15,6 +15,13 @@ from .query import (
     QueryResultSchema,
     MetadataFilterSchema,
 )
+from .data_source import (
+    CreateDataSourceRequest,
+    DataSourceResponse,
+    SubmitUrlsRequest,
+    ProcessingJobResponse,
+    SubmitJobsResponse,
+)
 
 __all__ = [
     "ArticleCreate",
@@ -34,5 +41,10 @@ __all__ = [
     "QueryMatchSchema",
     "QueryResultSchema",
     "MetadataFilterSchema",
+    "CreateDataSourceRequest",
+    "DataSourceResponse",
+    "SubmitUrlsRequest",
+    "ProcessingJobResponse",
+    "SubmitJobsResponse",
 ]
 

@@ -1,0 +1,6 @@
+{
+  "classification_model": "openrouter/auto",
+  "extraction_model": "anthropic/claude-sonnet-4.5",
+  "pdf_processing_model": "openrouter/auto",
+  "ontology_assistant_model": "openrouter/auto"
+}

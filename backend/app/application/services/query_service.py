@@ -2,7 +2,7 @@
 
 Two-stage flow:
   1. Intent Resolution: LLM maps the user's question to structured ontology terms.
-  2. Database Search: FileRepository queries processed files using resolved filters.
+  2. Database Search: ResourceRepository queries processed resources using resolved filters.
 """
 
 import json
@@ -12,7 +12,7 @@ import time
 from typing import Any
 
 from app.application.interfaces.chat_provider import ChatProvider
-from app.application.interfaces.file_repository import FileRepository
+from app.application.interfaces.resource_repository import ResourceRepository
 from app.application.interfaces.ontology_repository import OntologyRepository
 from app.application.services.llm_usage_logger import LLMUsageLogger
 from app.domain.entities.query import (
@@ -85,7 +85,7 @@ class QueryService:
         self,
         chat_provider: ChatProvider,
         ontology_repo: OntologyRepository,
-        file_repo: FileRepository,
+        file_repo: ResourceRepository,
         usage_logger: LLMUsageLogger,
         *,
         model: str = "",

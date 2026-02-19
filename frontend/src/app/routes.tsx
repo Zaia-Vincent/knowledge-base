@@ -3,11 +3,12 @@ import { Layout } from './Layout';
 import { HomePage } from '@/pages/HomePage';
 import { SetupPage } from '@/pages/SetupPage';
 import { ThemeColorsPage } from '@/pages/ThemeColorsPage';
+import { ModelSettingsPage } from '@/pages/ModelSettingsPage';
 import { ChatPage } from '@/pages/ChatPage';
-import { FilesPage } from '@/pages/FilesPage';
-import { FileDetailPage } from '@/pages/FileDetailPage';
 import { OntologyPage } from '@/pages/OntologyPage';
 import { QueryPage } from '@/pages/QueryPage';
+import { ResourcesPage } from '@/pages/ResourcesPage';
+import { DataSourcesPage } from '@/pages/DataSourcesPage';
 
 export const router = createBrowserRouter([
     {
@@ -22,14 +23,6 @@ export const router = createBrowserRouter([
                 element: <ChatPage />,
             },
             {
-                path: '/files',
-                element: <FilesPage />,
-            },
-            {
-                path: '/files/:id',
-                element: <FileDetailPage />,
-            },
-            {
                 path: '/ontology',
                 element: <OntologyPage />,
             },
@@ -38,12 +31,24 @@ export const router = createBrowserRouter([
                 element: <QueryPage />,
             },
             {
+                path: '/data-sources',
+                element: <DataSourcesPage />,
+            },
+            {
+                path: '/resources',
+                element: <ResourcesPage />,
+            },
+            {
                 path: '/setup',
                 element: <SetupPage />,
             },
             {
                 path: '/setup/theme-colors',
                 element: <ThemeColorsPage />,
+            },
+            {
+                path: '/setup/model-settings',
+                element: <ModelSettingsPage />,
             },
         ],
     },

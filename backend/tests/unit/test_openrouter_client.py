@@ -120,6 +120,27 @@ async def test_complete_error_handling():
 
 
 @pytest.mark.asyncio
+async def test_complete_401_user_not_found_includes_auth_hint():
+    """401 auth failures should include actionable configuration hint."""
+    error_data = {"error": {"code": 401, "message": "User not found."}}
+    transport = _make_mock_transport(error_data=error_data, status_code=401)
+    client = OpenRouterClient(
+        api_key="test-key",
+        http_client=httpx.AsyncClient(transport=transport),
+    )
+
+    with pytest.raises(ChatProviderError) as exc_info:
+        await client.complete(
+            messages=[ChatMessage(role="user", content="Hi")],
+            model="openai/gpt-4o-mini",
+        )
+
+    assert exc_info.value.status_code == 401
+    assert "User not found" in exc_info.value.message
+    assert "OPENROUTER_API_KEY" in exc_info.value.message
+
+
+@pytest.mark.asyncio
 async def test_complete_multimodal_message():
     """Multimodal messages are correctly serialized."""
     response_data = _mock_openrouter_response(content="I see an image.")

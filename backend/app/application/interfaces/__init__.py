@@ -2,8 +2,10 @@ from .article_repository import ArticleRepository
 from .chat_provider import ChatProvider
 from .service_request_log_repository import ServiceRequestLogRepository
 from .client_record_repository import ClientRecordRepository
+from .data_source_repository import DataSourceRepository
+from .processing_job_repository import ProcessingJobRepository
 from .ontology_repository import OntologyRepository
-from .file_repository import FileRepository
+from .resource_repository import ResourceRepository
 from .llm_client import LLMClient
 from .text_extractor import TextExtractor
 
@@ -12,8 +14,10 @@ __all__ = [
     "ChatProvider",
     "ServiceRequestLogRepository",
     "ClientRecordRepository",
+    "DataSourceRepository",
+    "ProcessingJobRepository",
     "OntologyRepository",
-    "FileRepository",
+    "ResourceRepository",
     "LLMClient",
     "TextExtractor",
 ]
