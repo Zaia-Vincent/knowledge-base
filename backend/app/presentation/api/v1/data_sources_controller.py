@@ -10,10 +10,14 @@ from app.application.schemas.data_source import (
     DataSourceResponse,
     ProcessFilesRequest,
     ProcessingJobResponse,
+    ProcessTextsRequest,
     SourceFileEntry,
     SourceFilesResponse,
+    SourceTextEntry,
+    SourceTextsResponse,
     SourceUrlsResponse,
     SubmitJobsResponse,
+    SubmitTextRequest,
     SubmitUrlsRequest,
     UpdateSourceUrlsRequest,
     UploadFilesResponse,
@@ -235,6 +239,77 @@ async def submit_urls(
     return SubmitJobsResponse(
         jobs=[_job_to_response(j) for j in jobs],
         message=f"Submitted {len(jobs)} URL(s) for processing",
+    )
+
+
+# ── Text Management ──────────────────────────────────────────────────
+
+
+@router.get("/{source_id}/texts", response_model=SourceTextsResponse)
+async def get_texts(
+    source_id: str,
+    service: DataSourceService = Depends(get_data_source_service),
+) -> SourceTextsResponse:
+    """List stored text entries for a text data source."""
+    try:
+        entries = await service.get_source_texts(source_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return SourceTextsResponse(
+        source_id=source_id,
+        texts=[SourceTextEntry(**e) for e in entries],
+    )
+
+
+@router.post("/{source_id}/texts", response_model=SourceTextsResponse, status_code=status.HTTP_201_CREATED)
+async def add_text(
+    source_id: str,
+    body: SubmitTextRequest,
+    service: DataSourceService = Depends(get_data_source_service),
+) -> SourceTextsResponse:
+    """Add a new text entry to a text data source."""
+    try:
+        await service.store_text(source_id, body.title, body.content)
+        entries = await service.get_source_texts(source_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return SourceTextsResponse(
+        source_id=source_id,
+        texts=[SourceTextEntry(**e) for e in entries],
+    )
+
+
+@router.delete("/{source_id}/texts", response_model=SourceTextsResponse)
+async def remove_text(
+    source_id: str,
+    text_id: str,
+    service: DataSourceService = Depends(get_data_source_service),
+) -> SourceTextsResponse:
+    """Remove a text entry from a text data source."""
+    try:
+        entries = await service.remove_source_text(source_id, text_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return SourceTextsResponse(
+        source_id=source_id,
+        texts=[SourceTextEntry(**e) for e in entries],
+    )
+
+
+@router.post("/{source_id}/process-texts", response_model=SubmitJobsResponse)
+async def process_texts(
+    source_id: str,
+    body: ProcessTextsRequest,
+    service: DataSourceService = Depends(get_data_source_service),
+) -> SubmitJobsResponse:
+    """Create processing jobs for selected text entries."""
+    try:
+        jobs = await service.submit_texts(source_id, body.text_ids)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return SubmitJobsResponse(
+        jobs=[_job_to_response(j) for j in jobs],
+        message=f"Submitted {len(jobs)} text(s) for processing",
     )
 
 

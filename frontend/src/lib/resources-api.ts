@@ -31,7 +31,13 @@ export const resourcesApi = {
     },
 
     /** Reprocess a resource — re-run the full processing pipeline. */
-    reprocess(id: string): Promise<ResourceDetail> {
-        return apiClient.post<ResourceDetail>(`${BASE}/${id}/reprocess`);
+    reprocess(id: string, conceptId?: string): Promise<ResourceDetail> {
+        const qs = conceptId ? `?concept_id=${encodeURIComponent(conceptId)}` : '';
+        return apiClient.post<ResourceDetail>(`${BASE}/${id}/reprocess${qs}`);
+    },
+
+    /** Build the URL for inline viewing of a stored resource. */
+    viewUrl(id: string): string {
+        return `/api/v1${BASE}/${id}/view`;
     },
 };

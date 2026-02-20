@@ -12,6 +12,7 @@ from .ontology_models import (
     EmbeddedTypePropertyModel,
 )
 from .resource_models import ResourceModel
+from .resource_chunk_models import ResourceChunkModel
 from .data_source_models import DataSourceModel, ProcessingJobModel
 
 __all__ = [
@@ -27,6 +28,7 @@ __all__ = [
     "EmbeddedTypeModel",
     "EmbeddedTypePropertyModel",
     "ResourceModel",
+    "ResourceChunkModel",
     "DataSourceModel",
     "ProcessingJobModel",
 ]

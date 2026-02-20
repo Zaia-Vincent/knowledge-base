@@ -158,6 +158,21 @@ class CreateConceptSchema(BaseModel):
     extraction_template: CreateExtractionTemplateSchema | None = None
 
 
+class UpdateConceptSchema(BaseModel):
+    """Request body for updating an existing L3+ concept.
+
+    Only mutable fields are accepted — id, layer, inherits, and abstract
+    are immutable after creation.
+    """
+
+    label: str | None = None
+    description: str | None = None
+    synonyms: list[str] | None = None
+    properties: list[CreateConceptPropertySchema] | None = None
+    relationships: list[CreateConceptRelationshipSchema] | None = None
+    extraction_template: CreateExtractionTemplateSchema | None = None
+
+
 class SuggestOntologyTypeRequestSchema(BaseModel):
     """Request body for AI-assisted L3 concept suggestion."""
 

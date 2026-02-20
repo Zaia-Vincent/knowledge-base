@@ -60,6 +60,7 @@ def _to_summary(resource: Resource) -> ResourceSummarySchema:
         concept_label=None,  # Will be populated when concept labels are available
         origin_file_id=resource.origin_file_id,
         page_range=resource.page_range,
+        stored_path=resource.stored_path or None,
         data_source_id=resource.data_source_id,
         data_source_name=None,
         uploaded_at=resource.uploaded_at.isoformat(),
@@ -117,6 +118,7 @@ def _to_detail(resource: Resource) -> ResourceDetailSchema:
         summary=resource.summary,
         language=resource.language,
         processing_time_ms=resource.processing_time_ms,
+        stored_path=resource.stored_path or None,
         data_source_id=resource.data_source_id,
         data_source_name=None,
         uploaded_at=resource.uploaded_at.isoformat(),
@@ -237,14 +239,39 @@ async def download_resource(
     )
 
 
+@router.get("/{resource_id}/view")
+async def view_resource(
+    resource_id: str,
+    service: ResourceProcessingService = Depends(get_resource_processing_service),
+):
+    """Serve the stored file inline for browser viewing."""
+    resource = await service.get_resource(resource_id)
+    if resource is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resource not found")
+
+    from pathlib import Path
+
+    file_path = Path(resource.stored_path)
+    if not file_path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="File no longer exists on disk")
+
+    return FileResponse(
+        path=str(file_path),
+        filename=resource.filename,
+        media_type=resource.mime_type,
+        content_disposition_type="inline",
+    )
+
+
 @router.post("/{resource_id}/reprocess")
 async def reprocess_resource(
     resource_id: str,
+    concept_id: str | None = Query(None, description="Optional concept override — skips classification"),
     service: ResourceProcessingService = Depends(get_resource_processing_service),
 ):
     """Re-run the processing pipeline for an existing resource."""
     try:
-        resource = await service.reprocess_resource(resource_id)
+        resource = await service.reprocess_resource(resource_id, concept_id=concept_id)
         return _to_detail(resource)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))

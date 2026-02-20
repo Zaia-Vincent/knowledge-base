@@ -7,6 +7,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -30,10 +31,12 @@ from app.infrastructure.capture.website_capture_service import WebsiteCaptureSer
 from app.infrastructure.dependencies import get_sse_manager
 from app.infrastructure.extractors.multi_format_text_extractor import MultiFormatTextExtractor
 from app.infrastructure.llm.openrouter_llm_client import OpenRouterLLMClient
-from app.infrastructure.openrouter import OpenRouterClient
+from app.infrastructure.openrouter import OpenRouterClient, OpenRouterEmbeddingProvider
 from app.infrastructure.storage.local_file_storage import LocalFileStorage
 from app.infrastructure.logging.log_config import setup_logging
 from app.presentation.api.router import router as api_router
+from app.application.services.embedding_service import EmbeddingService
+from app.infrastructure.database.repositories.chunk_repository import PgChunkRepository
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +167,26 @@ async def _build_resource_processing_service(session: AsyncSession) -> ResourceP
     )
     ontology_service = OntologyService(ontology_repo)
 
+    # Optional: embedding service for vector search
+    embedding_service = None
+    openrouter_api_key = settings.openrouter_api_key.strip()
+    if openrouter_api_key:
+        try:
+            embedding_provider = OpenRouterEmbeddingProvider(
+                api_key=openrouter_api_key,
+                base_url=settings.openrouter_base_url,
+                app_name=settings.openrouter_app_name,
+                model=settings.embedding_model,
+                model_dimensions=settings.embedding_dimensions,
+            )
+            chunk_repo = PgChunkRepository(session)
+            embedding_service = EmbeddingService(
+                embedding_provider=embedding_provider,
+                chunk_repository=chunk_repo,
+            )
+        except Exception:
+            logger.warning("Failed to initialize EmbeddingService")
+
     return ResourceProcessingService(
         file_repository=resource_repo,
         file_storage=storage,
@@ -174,6 +197,7 @@ async def _build_resource_processing_service(session: AsyncSession) -> ResourceP
         ontology_repo=ontology_repo,
         ontology_service=ontology_service,
         usage_logger=usage_logger,
+        embedding_service=embedding_service,
     )
 
 
@@ -186,8 +210,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # 0. Ensure the PostgreSQL database exists (auto-create if missing)
     await _ensure_database_exists()
 
-    # 1. Create all database tables
+    # 1. Create all database tables (enable pgvector extension first)
     async with engine.begin() as conn:
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         await conn.run_sync(Base.metadata.create_all)
 
     # 2. Seed default data sources (e.g. built-in "Files" source)

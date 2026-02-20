@@ -50,6 +50,10 @@ class Settings(BaseSettings):
     pdf_processing_model: str = "google/gemini-3-flash-preview"
     ontology_assistant_model: str = "openrouter/auto"
 
+    # Embedding model (used for vector search)
+    embedding_model: str = "google/gemini-embedding-001"
+    embedding_dimensions: int = 768  # Gemini supports 768 via Matryoshka (HNSW max: 2000)
+
     # Logging — per-category log levels (DEBUG, INFO, WARNING, ERROR, CRITICAL)
     log_level: str = "INFO"                  # Root / app-wide
     log_level_sql: str = "WARNING"           # sqlalchemy.engine — SQL queries

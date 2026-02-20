@@ -276,17 +276,19 @@ class OpenRouterLLMClient(LLMClient):
         self, request: LLMExtractionRequest
     ) -> LLMExtractionResponse:
         """Extract structured metadata using the concept's template fields."""
+        has_image = bool(request.image_base64 and request.mime_type)
         plog.step_start(
             PipelineStage.METADATA,
             f"Sending document to LLM for metadata extraction",
             model=self._model,
             concept=request.concept_id,
             num_fields=len(request.template_fields),
+            vision=has_image,
         )
         plog.detail(
             "Prompt selected: EXTRACTION_SYSTEM_PROMPT",
-            pipeline="text-metadata-extraction",
-            content_type="text",
+            pipeline="vision-metadata-extraction" if has_image else "text-metadata-extraction",
+            content_type="image+text" if has_image else "text",
             concept_id=request.concept_id,
         )
 
@@ -296,17 +298,43 @@ class OpenRouterLLMClient(LLMClient):
             for f in request.template_fields
         )
 
-        user_message = (
+        user_text = (
             f"Extract the following fields from this {request.concept_id} document:\n\n"
             f"## Fields to Extract\n{fields_text}\n\n"
-            f"## Document Content\n{request.text[:8000]}\n\n"
-            f"Return the extracted values as JSON."
         )
 
-        messages = [
-            ChatMessage(role="system", content=_EXTRACTION_SYSTEM_PROMPT),
-            ChatMessage(role="user", content=user_message),
-        ]
+        if has_image:
+            # Vision: primary source is the image, text is supplementary
+            user_text += (
+                "## Instructions\n"
+                "Analyze the image below and extract the requested fields. "
+                "Use the visual content of the image to determine the values.\n\n"
+            )
+            if request.text and not request.text.startswith("["):
+                user_text += f"## Supplementary Text\n{request.text[:4000]}\n\n"
+            user_text += "Return the extracted values as JSON."
+
+            # Build multimodal content: text + image
+            content_parts: list[ContentPart] = [
+                ContentPart(type="text", text=user_text),
+                ContentPart(
+                    type="image_url",
+                    image_url={"url": f"data:{request.mime_type};base64,{request.image_base64}"},
+                ),
+            ]
+            messages = [
+                ChatMessage(role="system", content=_EXTRACTION_SYSTEM_PROMPT),
+                ChatMessage(role="user", content=content_parts),
+            ]
+        else:
+            # Text-only extraction
+            user_text += f"## Document Content\n{request.text[:8000]}\n\n"
+            user_text += "Return the extracted values as JSON."
+
+            messages = [
+                ChatMessage(role="system", content=_EXTRACTION_SYSTEM_PROMPT),
+                ChatMessage(role="user", content=user_text),
+            ]
 
         result = await self._client.complete(messages, self._model, temperature=0.1, max_tokens=2000)
         response_text = result.content.strip()
@@ -767,16 +795,17 @@ class OpenRouterLLMClient(LLMClient):
     @staticmethod
     def _extract_json(text: str) -> str:
         """Extract JSON from a response that might be wrapped in markdown code blocks."""
-        # Try to extract from ```json ... ``` blocks
+        import re
+
+        # Try to extract from ```json ... ``` blocks (greedy to capture full content)
         if "```" in text:
-            import re
-            match = re.search(r"```(?:json)?\s*\n?(.*?)\n?\s*```", text, re.DOTALL)
+            match = re.search(r"```(?:json)?\s*\n(.+?)\n\s*```", text, re.DOTALL)
             if match:
                 return match.group(1).strip()
 
         # Try the raw text as JSON
         text = text.strip()
-        if text.startswith("{"):
+        if text.startswith("{") or text.startswith("["):
             return text
 
         raise ValueError(f"Could not extract JSON from LLM response: {text[:200]}")

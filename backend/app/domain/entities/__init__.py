@@ -28,6 +28,7 @@ from .query import (
     QueryMatch,
     QueryResult,
 )
+from .resource_chunk import ResourceChunk
 
 __all__ = [
     "Article",
@@ -61,4 +62,5 @@ __all__ = [
     "QueryIntent",
     "QueryMatch",
     "QueryResult",
+    "ResourceChunk",
 ]

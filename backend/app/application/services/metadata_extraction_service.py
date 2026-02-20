@@ -51,12 +51,16 @@ class MetadataExtractionService:
         *,
         text: str,
         classification: ClassificationResult,
+        image_base64: str | None = None,
+        mime_type: str | None = None,
     ) -> tuple[dict[str, Any], list[dict[str, Any]], str]:
         """Extract metadata from a classified document.
 
         Args:
             text: Full extracted text of the document.
             classification: The classification result (concept_id + confidence).
+            image_base64: Optional base64-encoded image for vision-based extraction.
+            mime_type: Image MIME type (required when image_base64 is set).
 
         Returns:
             Tuple of (metadata dict, extra_fields list, summary text).
@@ -91,7 +95,10 @@ class MetadataExtractionService:
 
         # If LLM is available, use it for extraction
         if self._llm_client:
-            return await self._extract_with_llm(text, concept, template_fields)
+            return await self._extract_with_llm(
+                text, concept, template_fields,
+                image_base64=image_base64, mime_type=mime_type,
+            )
 
         # Fallback: attempt rule-based extraction for common patterns
         return self._extract_rule_based(text, concept, template_fields), [], ""
@@ -101,6 +108,9 @@ class MetadataExtractionService:
         text: str,
         concept: OntologyConcept,
         template_fields: list[dict],
+        *,
+        image_base64: str | None = None,
+        mime_type: str | None = None,
     ) -> tuple[dict[str, Any], list[dict[str, Any]], str]:
         """Use LLM to extract metadata based on the concept's template."""
         try:
@@ -108,6 +118,8 @@ class MetadataExtractionService:
                 text=text,
                 concept_id=concept.id,
                 template_fields=template_fields,
+                image_base64=image_base64,
+                mime_type=mime_type,
             )
 
             start = time.monotonic()

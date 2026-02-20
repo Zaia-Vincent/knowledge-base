@@ -5,6 +5,7 @@ from .ontology_repository import SQLAlchemyOntologyRepository
 from .resource_repository import SQLAlchemyResourceRepository
 from .data_source_repository import SQLAlchemyDataSourceRepository
 from .processing_job_repository import SQLAlchemyProcessingJobRepository
+from .chunk_repository import PgChunkRepository
 
 __all__ = [
     "SQLAlchemyArticleRepository",
@@ -14,5 +15,6 @@ __all__ = [
     "SQLAlchemyResourceRepository",
     "SQLAlchemyDataSourceRepository",
     "SQLAlchemyProcessingJobRepository",
+    "PgChunkRepository",
 ]
 

@@ -20,6 +20,7 @@ from app.application.schemas.ontology import (
     SuggestOntologyTypeRequestSchema,
     SuggestOntologyTypeResponseSchema,
     SuggestionReferenceSchema,
+    UpdateConceptSchema,
 )
 from app.application.services.ontology_service import (
     ConceptAlreadyExistsError,
@@ -321,6 +322,73 @@ async def delete_concept(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Concept '{concept_id}' not found",
         )
+
+
+@router.put("/concepts/{concept_id}", response_model=ConceptDetailSchema)
+async def update_concept(
+    concept_id: str,
+    body: UpdateConceptSchema,
+    service: OntologyService = Depends(get_ontology_service),
+):
+    """Update an L3+ ontology concept. L1/L2 concepts cannot be modified."""
+    # Map schema fields to domain objects where supplied
+    properties = None
+    if body.properties is not None:
+        properties = [
+            ConceptProperty(
+                name=p.name,
+                type=p.type,
+                required=p.required,
+                default_value=p.default_value,
+                description=p.description,
+            )
+            for p in body.properties
+        ]
+
+    relationships = None
+    if body.relationships is not None:
+        relationships = [
+            ConceptRelationship(
+                name=r.name,
+                target=r.target,
+                cardinality=r.cardinality,
+                inverse=r.inverse,
+                description=r.description,
+            )
+            for r in body.relationships
+        ]
+
+    extraction_template = None
+    if body.extraction_template is not None:
+        extraction_template = ExtractionTemplate(
+            classification_hints=body.extraction_template.classification_hints,
+            file_patterns=body.extraction_template.file_patterns,
+        )
+
+    try:
+        updated = await service.update_concept(
+            concept_id,
+            label=body.label,
+            description=body.description,
+            synonyms=body.synonyms,
+            properties=properties,
+            relationships=relationships,
+            extraction_template=extraction_template,
+        )
+    except ProtectedConceptError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        )
+
+    ancestors = await service.get_ancestors(concept_id)
+    embedded_types = await service.get_embedded_types_for_concept(concept_id)
+    return _to_detail(updated, ancestors=ancestors, embedded_types=embedded_types)
 
 
 def _to_suggestion_response(

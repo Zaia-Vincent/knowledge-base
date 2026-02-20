@@ -37,6 +37,8 @@ class LLMExtractionRequest:
     text: str
     concept_id: str
     template_fields: list[dict[str, Any]]  # [{name, type, required, description}]
+    image_base64: str | None = None  # Optional: base64-encoded image for vision-based extraction
+    mime_type: str | None = None  # e.g. "image/jpeg" — required when image_base64 is set
 
 
 @dataclass

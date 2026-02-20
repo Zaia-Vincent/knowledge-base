@@ -14,6 +14,8 @@ from typing import Any
 from app.application.interfaces.chat_provider import ChatProvider
 from app.application.interfaces.resource_repository import ResourceRepository
 from app.application.interfaces.ontology_repository import OntologyRepository
+from app.application.interfaces.embedding_provider import EmbeddingProvider
+from app.application.interfaces.chunk_repository import ChunkRepository
 from app.application.services.llm_usage_logger import LLMUsageLogger
 from app.domain.entities.query import (
     MetadataFilter,
@@ -89,12 +91,16 @@ class QueryService:
         usage_logger: LLMUsageLogger,
         *,
         model: str = "",
+        embedding_provider: EmbeddingProvider | None = None,
+        chunk_repo: ChunkRepository | None = None,
     ):
         self._chat_provider = chat_provider
         self._ontology_repo = ontology_repo
         self._file_repo = file_repo
         self._usage_logger = usage_logger
         self._model = model
+        self._embedding_provider = embedding_provider
+        self._chunk_repo = chunk_repo
 
     async def query(
         self,
@@ -181,15 +187,31 @@ class QueryService:
         *,
         max_results: int = 20,
     ) -> QueryResult:
-        """Stage 2: Search the knowledge database using the resolved intent."""
+        """Stage 2: Search the knowledge database using the resolved intent.
+
+        Uses vector similarity search when available, falling back to
+        text-based ILIKE search.
+        """
         has_structured_filters = bool(intent.concept_ids or intent.metadata_filters)
+        has_vector_search = bool(
+            self._embedding_provider and self._chunk_repo and intent.text_query
+        )
+
         logger.info(
-            "Executing query search: concepts=%s filters=%s text_query=%r limit=%d",
+            "Executing query search: concepts=%s filters=%s text_query=%r "
+            "vector_search=%s limit=%d",
             intent.concept_ids,
             self._filters_as_dict(intent.metadata_filters),
             intent.text_query,
+            has_vector_search,
             max_results,
         )
+
+        # ── Vector search path ──────────────────────────────────────
+        if has_vector_search:
+            return await self._execute_vector_query(intent, max_results=max_results)
+
+        # ── Fallback: text-based search ─────────────────────────────
         files = await self._file_repo.search(
             concept_ids=intent.concept_ids or None,
             metadata_filters=intent.metadata_filters or None,
@@ -198,8 +220,7 @@ class QueryService:
         )
 
         # If strict free-text phrase produced no results, retry with only
-        # structured ontology filters. This avoids false negatives for
-        # natural-language text_query values like "invoices from DONCKERS".
+        # structured ontology filters.
         if not files and intent.text_query and has_structured_filters:
             logger.info(
                 "Query retry without text_query after zero results. "
@@ -241,10 +262,91 @@ class QueryService:
             total_matches=len(matches),
         )
 
+    async def _execute_vector_query(
+        self,
+        intent: QueryIntent,
+        *,
+        max_results: int = 20,
+    ) -> QueryResult:
+        """Execute a vector similarity search using embedding + pgvector.
+
+        When concept filtering produces zero results, automatically retries
+        without concept constraints so that semantically relevant documents
+        are still returned.
+        """
+        assert self._embedding_provider is not None
+        assert self._chunk_repo is not None
+        assert intent.text_query is not None
+
+        # Generate query embedding
+        query_embedding = await self._embedding_provider.generate_query_embedding(
+            intent.text_query
+        )
+
+        logger.info(
+            "Vector search: query=%r concepts=%s dims=%d",
+            intent.text_query,
+            intent.concept_ids,
+            len(query_embedding),
+        )
+
+        # Search for similar chunks
+        results = await self._chunk_repo.search_similar(
+            query_embedding,
+            concept_ids=intent.concept_ids or None,
+            limit=max_results * 3,  # Fetch more to deduplicate by resource
+        )
+
+        # If concept-filtered search returned nothing, retry without concepts.
+        if not results and intent.concept_ids:
+            logger.info(
+                "Vector search retry without concept filter (0 results with concepts=%s)",
+                intent.concept_ids,
+            )
+            results = await self._chunk_repo.search_similar(
+                query_embedding,
+                concept_ids=None,
+                limit=max_results * 3,
+            )
+
+        # Deduplicate by resource_id, keeping highest similarity
+        seen_resources: dict[str, QueryMatch] = {}
+        for vsr in results:
+            if vsr.resource_id in seen_resources:
+                continue  # Already have a higher-similarity chunk for this resource
+            seen_resources[vsr.resource_id] = QueryMatch(
+                file_id=vsr.resource_id,
+                filename=vsr.filename,
+                concept_id=vsr.concept_id,
+                concept_label=vsr.concept_label,
+                confidence=vsr.similarity,
+                summary=vsr.summary,
+                metadata=vsr.metadata,
+                relevance_score=vsr.similarity,
+            )
+
+        matches = list(seen_resources.values())[:max_results]
+
+        logger.info(
+            "Vector search complete: chunks=%d unique_resources=%d",
+            len(results),
+            len(matches),
+        )
+
+        return QueryResult(
+            intent=intent,
+            matches=matches,
+            total_matches=len(matches),
+        )
+
     # ── Private helpers ──────────────────────────────────────────────
 
     async def _build_ontology_context(self) -> list[dict[str, Any]]:
-        """Build a slim ontology summary for the LLM prompt."""
+        """Build a slim ontology summary for the LLM prompt.
+
+        Only sends property names (not full type/description) to keep token
+        count manageable — the LLM only needs names for filter construction.
+        """
         concepts = await self._ontology_repo.get_all_concepts()
         concepts_by_id = {c.id: c for c in concepts}
         mixin_cache: dict[str, Any] = {}
@@ -256,24 +358,16 @@ class QueryService:
             entry: dict[str, Any] = {
                 "id": c.id,
                 "label": c.label,
-                "description": c.description[:200] if c.description else "",
-                "synonyms": c.synonyms,
+                "description": c.description[:120] if c.description else "",
+                "synonyms": c.synonyms[:5],  # Limit synonym list
             }
 
-            # Include resolved property names (inherited + mixins) so LLM can
-            # create valid metadata filters for concrete concepts.
+            # Include only property names (not type/description) to save tokens.
             resolved_props = await self._resolve_properties_for_context(
                 c, concepts_by_id, mixin_cache
             )
             if resolved_props:
-                entry["properties"] = [
-                    {
-                        "name": p.name,
-                        "type": p.type,
-                        "description": p.description or "",
-                    }
-                    for p in resolved_props
-                ]
+                entry["properties"] = [p.name for p in resolved_props]
 
             summary.append(entry)
 
@@ -359,9 +453,13 @@ class QueryService:
         field_specs: dict[str, dict[str, Any]] = {}
         for concept in candidate_concepts:
             for prop in concept.get("properties", []):
-                name = prop.get("name")
-                if name:
-                    field_specs[name] = prop
+                # Properties can be plain strings (slim format) or dicts.
+                if isinstance(prop, str):
+                    field_specs[prop] = {"name": prop, "type": "string"}
+                else:
+                    name = prop.get("name")
+                    if name:
+                        field_specs[name] = prop
 
         alias_map: dict[str, str] = {}
         for name, spec in field_specs.items():
@@ -467,7 +565,11 @@ class QueryService:
         question: str,
         concepts_summary: list[dict[str, Any]],
     ) -> list[str]:
-        """Infer concept IDs by matching question text against labels/synonyms."""
+        """Infer concept IDs by matching question text against labels/synonyms.
+
+        Uses word-boundary matching to avoid false positives (e.g. 'unit' in
+        'BusinessUnit' matching 'steun haalt'). Only considers tokens ≥ 4 chars.
+        """
         q = question.lower()
         inferred: list[str] = []
         for concept in concepts_summary:
@@ -475,13 +577,17 @@ class QueryService:
             if not concept_id:
                 continue
             aliases = [
-                str(concept_id),
                 str(concept.get("label") or ""),
                 *[str(s) for s in concept.get("synonyms", [])],
             ]
             for alias in aliases:
                 token = alias.strip().lower()
-                if token and token in q:
+                # Skip very short tokens — too prone to false-positive substring matches.
+                if len(token) < 4:
+                    continue
+                # Use word-boundary matching so 'report' matches 'report' but
+                # 'unit' does NOT match 'steunit' or partial words.
+                if re.search(rf"\b{re.escape(token)}\b", q):
                     if concept_id not in inferred:
                         inferred.append(concept_id)
                     break

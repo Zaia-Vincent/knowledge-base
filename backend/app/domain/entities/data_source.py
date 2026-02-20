@@ -11,6 +11,7 @@ class DataSourceType(str, Enum):
 
     FILE_UPLOAD = "file_upload"
     WEBSITE = "website"
+    TEXT = "text"
 
 
 @dataclass
@@ -20,6 +21,7 @@ class DataSource:
     Config examples:
         FILE_UPLOAD: {}
         WEBSITE:     {"urls": ["https://example.com/page1", ...]}
+        TEXT:        {"texts": [{"id": "...", "title": "...", "content": "...", ...}]}
     """
 
     name: str

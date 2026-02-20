@@ -11,6 +11,7 @@ import type {
     OntologyStats,
     SuggestOntologyTypePayload,
     SuggestOntologyTypeResponse,
+    UpdateConceptPayload,
 } from '@/types/ontology';
 
 const BASE = '/ontology';
@@ -58,5 +59,10 @@ export const ontologyApi = {
     /** Delete an L3+ concept. */
     deleteConcept(id: string): Promise<void> {
         return apiClient.delete(`${BASE}/concepts/${id}`);
+    },
+
+    /** Update an L3+ concept (partial update). */
+    updateConcept(id: string, data: UpdateConceptPayload): Promise<ConceptDetail> {
+        return apiClient.put<ConceptDetail>(`${BASE}/concepts/${id}`, data);
     },
 };

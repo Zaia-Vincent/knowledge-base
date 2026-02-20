@@ -28,9 +28,11 @@ from app.infrastructure.database.repositories import (
 )
 from app.infrastructure.extractors.multi_format_text_extractor import MultiFormatTextExtractor
 from app.infrastructure.llm.openrouter_llm_client import OpenRouterLLMClient
-from app.infrastructure.openrouter import OpenRouterClient
+from app.infrastructure.openrouter import OpenRouterClient, OpenRouterEmbeddingProvider
 from app.infrastructure.storage.local_file_storage import LocalFileStorage
 from app.application.services.sse_manager import SSEManager
+from app.application.services.embedding_service import EmbeddingService
+from app.infrastructure.database.repositories.chunk_repository import PgChunkRepository
 
 
 
@@ -153,6 +155,25 @@ async def get_resource_processing_service(
 
     ontology_service = OntologyService(ontology_repository)
 
+    # Optional: embedding service for vector search
+    embedding_service = None
+    if settings.openrouter_api_key.strip():
+        try:
+            embedding_provider = OpenRouterEmbeddingProvider(
+                api_key=settings.openrouter_api_key,
+                base_url=settings.openrouter_base_url,
+                app_name=settings.openrouter_app_name,
+                model=settings.embedding_model,
+                model_dimensions=settings.embedding_dimensions,
+            )
+            chunk_repo = PgChunkRepository(session)
+            embedding_service = EmbeddingService(
+                embedding_provider=embedding_provider,
+                chunk_repository=chunk_repo,
+            )
+        except Exception:
+            pass  # Embedding not configured — continue without it
+
     yield ResourceProcessingService(
         file_repository=resource_repository,
         file_storage=storage,
@@ -163,6 +184,7 @@ async def get_resource_processing_service(
         ontology_repo=ontology_repository,
         ontology_service=ontology_service,
         usage_logger=usage_logger,
+        embedding_service=embedding_service,
     )
 
 
@@ -185,12 +207,30 @@ async def get_query_service(
     log_repo = SQLAlchemyServiceRequestLogRepository(session)
     usage_logger = LLMUsageLogger(log_repo)
 
+    # Optional: vector search components
+    embedding_provider = None
+    chunk_repo = None
+    if settings.openrouter_api_key.strip():
+        try:
+            embedding_provider = OpenRouterEmbeddingProvider(
+                api_key=settings.openrouter_api_key,
+                base_url=settings.openrouter_base_url,
+                app_name=settings.openrouter_app_name,
+                model=settings.embedding_model,
+                model_dimensions=settings.embedding_dimensions,
+            )
+            chunk_repo = PgChunkRepository(session)
+        except Exception:
+            pass  # Embedding not configured
+
     yield QueryService(
         chat_provider=provider,
         ontology_repo=ontology_repo,
         file_repo=resource_repo,
         usage_logger=usage_logger,
         model=settings.classification_model,
+        embedding_provider=embedding_provider,
+        chunk_repo=chunk_repo,
     )
 
 

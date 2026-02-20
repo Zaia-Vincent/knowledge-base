@@ -45,6 +45,7 @@ export interface ResourceSummary {
     concept_label: string | null;
     origin_file_id: string | null;
     page_range: string | null;
+    stored_path: string | null;
     uploaded_at: string;
     processed_at: string | null;
     error_message: string | null;
@@ -66,6 +67,7 @@ export interface ResourceDetail {
     summary: string | null;
     language: string | null;
     processing_time_ms: number | null;
+    stored_path: string | null;
     uploaded_at: string;
     processed_at: string | null;
     error_message: string | null;

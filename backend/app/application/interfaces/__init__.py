@@ -8,6 +8,8 @@ from .ontology_repository import OntologyRepository
 from .resource_repository import ResourceRepository
 from .llm_client import LLMClient
 from .text_extractor import TextExtractor
+from .embedding_provider import EmbeddingProvider
+from .chunk_repository import ChunkRepository, VectorSearchResult
 
 __all__ = [
     "ArticleRepository",
@@ -20,4 +22,7 @@ __all__ = [
     "ResourceRepository",
     "LLMClient",
     "TextExtractor",
+    "EmbeddingProvider",
+    "ChunkRepository",
+    "VectorSearchResult",
 ]

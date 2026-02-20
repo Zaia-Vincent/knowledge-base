@@ -7,10 +7,13 @@ import type {
     DataSource,
     CreateDataSourceRequest,
     ProcessFilesRequest,
+    ProcessTextsRequest,
     ProcessingJob,
     SourceFilesResponse,
+    SourceTextsResponse,
     SourceUrlsResponse,
     SubmitJobsResponse,
+    SubmitTextRequest,
     SubmitUrlsRequest,
     UpdateSourceUrlsRequest,
     UploadFilesResponse,
@@ -111,6 +114,28 @@ export const dataSourcesApi = {
     processFiles(sourceId: string, request: ProcessFilesRequest): Promise<SubmitJobsResponse> {
         return apiClient.post<SubmitJobsResponse>(`${BASE}/${sourceId}/process-files`, request);
     },
+
+    // ── Text Management ─────────────────────────────────────────────
+
+    /** Get stored text entries for a text data source. */
+    getTexts(sourceId: string): Promise<SourceTextsResponse> {
+        return apiClient.get<SourceTextsResponse>(`${BASE}/${sourceId}/texts`);
+    },
+
+    /** Add a new text entry to a text data source. */
+    addText(sourceId: string, request: SubmitTextRequest): Promise<SourceTextsResponse> {
+        return apiClient.post<SourceTextsResponse>(`${BASE}/${sourceId}/texts`, request);
+    },
+
+    /** Remove a text entry from a text data source. */
+    removeText(sourceId: string, textId: string): Promise<SourceTextsResponse> {
+        return apiClient.delete<SourceTextsResponse>(`${BASE}/${sourceId}/texts?text_id=${encodeURIComponent(textId)}`);
+    },
+
+    /** Process selected text entries. */
+    processTexts(sourceId: string, request: ProcessTextsRequest): Promise<SubmitJobsResponse> {
+        return apiClient.post<SubmitJobsResponse>(`${BASE}/${sourceId}/process-texts`, request);
+    },
 };
 
 /**
@@ -120,3 +145,4 @@ export function getJobStreamUrl(): string {
     const base = import.meta.env.VITE_API_BASE_URL ?? '/api/v1';
     return `${base}${BASE}/jobs/stream`;
 }
+

@@ -135,6 +135,15 @@ export interface CreateConceptPayload {
     extraction_template?: CreateExtractionTemplatePayload;
 }
 
+export interface UpdateConceptPayload {
+    label?: string;
+    description?: string;
+    synonyms?: string[];
+    properties?: CreateConceptPropertyPayload[];
+    relationships?: CreateConceptRelationshipPayload[];
+    extraction_template?: CreateExtractionTemplatePayload;
+}
+
 export interface SuggestOntologyTypePayload {
     name: string;
     description?: string;

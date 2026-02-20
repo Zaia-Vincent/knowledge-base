@@ -12,7 +12,7 @@
  *   • Resizable detail panel for inspecting metadata
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     Search,
     Loader2,
@@ -30,10 +30,13 @@ import {
     X,
     Globe,
     File,
+    ExternalLink,
 } from 'lucide-react';
 import { useResources, useResourceDetail } from '@/hooks/use-resources';
 import { resourcesApi } from '@/lib/resources-api';
+import { ontologyApi } from '@/lib/ontology-api';
 import type { ResourceSummary, ResourceDetail, MetadataField, ExtraField } from '@/types/resources';
+import type { ConceptSummary } from '@/types/ontology';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -309,8 +312,8 @@ export function ResourcesPage() {
                                 <DetailPanel
                                     resourceId={selectedId}
                                     onClose={() => setSelectedId(null)}
-                                    onReprocess={async () => {
-                                        await resourcesApi.reprocess(selectedId);
+                                    onReprocess={async (conceptId?: string) => {
+                                        await resourcesApi.reprocess(selectedId, conceptId);
                                         await refetch();
                                     }}
                                 />
@@ -521,16 +524,32 @@ function ResourceRow({
 
 /* ── Detail Panel ────────────────────────────────────────────────── */
 
-function DetailPanel({ resourceId, onClose, onReprocess }: { resourceId: string; onClose: () => void; onReprocess: () => Promise<void> }) {
+function DetailPanel({ resourceId, onClose, onReprocess }: { resourceId: string; onClose: () => void; onReprocess: (conceptId?: string) => Promise<void> }) {
     const { resource, loading, error, refetch: refetchDetail } = useResourceDetail(resourceId);
     const [viewMode, setViewMode] = useState<'formatted' | 'raw'>('formatted');
     const [reprocessing, setReprocessing] = useState(false);
+    const [overrideConcept, setOverrideConcept] = useState<string | null>(null);
+    const [conceptList, setConceptList] = useState<ConceptSummary[]>([]);
+
+    // Fetch concept list for the dropdown
+    useEffect(() => {
+        ontologyApi.listConcepts().then((concepts) => {
+            // Only show non-abstract concepts that can be assigned
+            setConceptList(concepts.filter((c) => !c.abstract));
+        }).catch(() => { });
+    }, []);
+
+    // Reset override when resource changes
+    useEffect(() => {
+        setOverrideConcept(null);
+    }, [resourceId]);
 
     const handleReprocess = async () => {
         setReprocessing(true);
         try {
-            await onReprocess();
+            await onReprocess(overrideConcept ?? undefined);
             await refetchDetail();
+            setOverrideConcept(null);
         } catch (err) {
             console.error('Reprocess failed:', err);
         } finally {
@@ -560,20 +579,32 @@ function DetailPanel({ resourceId, onClose, onReprocess }: { resourceId: string;
             <div className="flex items-center justify-between px-4 py-3 border-b">
                 <h3 className="text-sm font-semibold truncate">{resource.filename}</h3>
                 <div className="flex items-center gap-1 shrink-0">
+                    {resource.stored_path && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => window.open(resourcesApi.viewUrl(resourceId), '_blank')}
+                            className="gap-1.5 text-xs h-7"
+                            title="View stored resource"
+                        >
+                            <ExternalLink className="size-3.5" />
+                            View
+                        </Button>
+                    )}
                     <Button
                         variant="ghost"
                         size="sm"
                         onClick={handleReprocess}
                         disabled={reprocessing}
                         className="gap-1.5 text-xs h-7"
-                        title="Reprocess this resource"
+                        title={overrideConcept ? `Reprocess as "${overrideConcept}"` : 'Reprocess this resource'}
                     >
                         {reprocessing ? (
                             <Loader2 className="size-3.5 animate-spin" />
                         ) : (
                             <RotateCcw className="size-3.5" />
                         )}
-                        Reprocess
+                        {overrideConcept ? 'Reprocess as…' : 'Reprocess'}
                     </Button>
                     <Button variant="ghost" size="icon" onClick={onClose} className="size-7">
                         <X className="size-4" />
@@ -604,7 +635,12 @@ function DetailPanel({ resourceId, onClose, onReprocess }: { resourceId: string;
                         {JSON.stringify(resource, null, 2)}
                     </pre>
                 ) : (
-                    <FormattedDetail resource={resource} />
+                    <FormattedDetail
+                        resource={resource}
+                        overrideConcept={overrideConcept}
+                        conceptList={conceptList}
+                        onConceptChange={setOverrideConcept}
+                    />
                 )}
             </div>
         </div>
@@ -613,7 +649,12 @@ function DetailPanel({ resourceId, onClose, onReprocess }: { resourceId: string;
 
 /* ── Formatted Detail ────────────────────────────────────────────── */
 
-function FormattedDetail({ resource }: { resource: ResourceDetail }) {
+function FormattedDetail({ resource, overrideConcept, conceptList, onConceptChange }: {
+    resource: ResourceDetail;
+    overrideConcept: string | null;
+    conceptList: ConceptSummary[];
+    onConceptChange: (id: string | null) => void;
+}) {
     return (
         <div className="space-y-4">
             {/* General info */}
@@ -630,37 +671,67 @@ function FormattedDetail({ resource }: { resource: ResourceDetail }) {
                     {resource.processing_time_ms != null && <InfoRow label="Processing Time" value={`${resource.processing_time_ms} ms`} />}
                     {resource.language && <InfoRow label="Language" value={resource.language} />}
                     {resource.data_source_id && <InfoRow label="Data Source" value={resource.data_source_name ?? resource.data_source_id} />}
+                    {resource.stored_path && <InfoRow label="Stored Path" value={resource.stored_path} />}
                 </CardContent>
             </Card>
 
             {/* Classification */}
-            {resource.classification && (
-                <Card>
-                    <CardHeader className="py-3 px-4">
-                        <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Classification</CardTitle>
-                    </CardHeader>
-                    <CardContent className="px-4 pb-3 space-y-2 text-sm">
-                        <InfoRow label="Concept" value={
-                            <Badge variant="secondary">{resource.classification.primary_concept_id}</Badge>
-                        } />
-                        <InfoRow label="Confidence" value={`${Math.round(resource.classification.confidence * 100)}%`} />
-                        {resource.classification.signals.length > 0 && (
-                            <div className="pt-1">
-                                <span className="text-xs text-muted-foreground font-medium">Signals</span>
-                                <div className="mt-1 space-y-1">
-                                    {resource.classification.signals.map((s, i) => (
-                                        <div key={i} className="text-xs flex items-center gap-2 bg-muted/50 rounded px-2 py-1">
-                                            <Badge variant="outline" className="text-[10px]">{s.method}</Badge>
-                                            <span className="truncate">{s.details}</span>
-                                            <span className="ml-auto text-muted-foreground">{Math.round(s.score * 100)}%</span>
-                                        </div>
-                                    ))}
+            <Card>
+                <CardHeader className="py-3 px-4">
+                    <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Classification</CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pb-3 space-y-2 text-sm">
+                    <div className="flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground font-medium">Concept</span>
+                        <div className="flex items-center gap-2">
+                            {resource.classification && !overrideConcept && (
+                                <Badge variant="secondary">{resource.classification.primary_concept_id}</Badge>
+                            )}
+                            <select
+                                className="text-xs border rounded-md px-2 py-1 bg-background cursor-pointer max-w-[180px]"
+                                value={overrideConcept ?? resource.classification?.primary_concept_id ?? ''}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    const originalConcept = resource.classification?.primary_concept_id;
+                                    onConceptChange(val && val !== originalConcept ? val : null);
+                                }}
+                            >
+                                {!resource.classification && <option value="">Select concept…</option>}
+                                {conceptList.map((c) => (
+                                    <option key={c.id} value={c.id}>
+                                        {c.label} ({c.layer})
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                    {overrideConcept && (
+                        <div className="flex items-center gap-1.5 text-xs text-amber-600 bg-amber-50 dark:bg-amber-950/30 dark:text-amber-400 rounded px-2 py-1">
+                            <RefreshCw className="size-3" />
+                            Will reprocess as <strong>{overrideConcept}</strong>
+                        </div>
+                    )}
+                    {resource.classification && (
+                        <>
+                            <InfoRow label="Confidence" value={`${Math.round(resource.classification.confidence * 100)}%`} />
+                            {resource.classification.signals.length > 0 && (
+                                <div className="pt-1">
+                                    <span className="text-xs text-muted-foreground font-medium">Signals</span>
+                                    <div className="mt-1 space-y-1">
+                                        {resource.classification.signals.map((s, i) => (
+                                            <div key={i} className="text-xs flex items-center gap-2 bg-muted/50 rounded px-2 py-1">
+                                                <Badge variant="outline" className="text-[10px]">{s.method}</Badge>
+                                                <span className="truncate">{s.details}</span>
+                                                <span className="ml-auto text-muted-foreground">{Math.round(s.score * 100)}%</span>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
-                            </div>
-                        )}
-                    </CardContent>
-                </Card>
-            )}
+                            )}
+                        </>
+                    )}
+                </CardContent>
+            </Card>
 
             {/* Summary */}
             {resource.summary && (

@@ -9,6 +9,7 @@ from .ontology_service import OntologyService
 from .ontology_type_assistant_service import OntologyTypeAssistantService
 from .resource_processing_service import ResourceProcessingService
 from .query_service import QueryService
+from .embedding_service import EmbeddingService
 from .data_source_service import DataSourceService
 from .background_processor import BackgroundProcessor
 from .sse_manager import SSEManager
@@ -25,6 +26,7 @@ __all__ = [
     "OntologyTypeAssistantService",
     "ResourceProcessingService",
     "QueryService",
+    "EmbeddingService",
     "DataSourceService",
     "BackgroundProcessor",
     "SSEManager",

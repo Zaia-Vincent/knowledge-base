@@ -3,7 +3,7 @@
  * Mirrors backend Pydantic schemas in data_source.py.
  */
 
-export type DataSourceType = 'file_upload' | 'website';
+export type DataSourceType = 'file_upload' | 'website' | 'text';
 
 export type JobStatus = 'queued' | 'processing' | 'completed' | 'failed';
 
@@ -78,6 +78,30 @@ export interface SubmitJobsResponse {
     message: string;
 }
 
+// ── Text Source Types ───────────────────────────────────────────────
+
+export interface SubmitTextRequest {
+    title: string;
+    content: string;
+}
+
+export interface SourceTextEntry {
+    id: string;
+    title: string;
+    content: string;
+    char_count: number;
+    created_at: string;
+}
+
+export interface SourceTextsResponse {
+    source_id: string;
+    texts: SourceTextEntry[];
+}
+
+export interface ProcessTextsRequest {
+    text_ids: string[];
+}
+
 /** SSE event payload for real-time job updates */
 export interface JobUpdateEvent {
     id: string;
@@ -91,3 +115,4 @@ export interface JobUpdateEvent {
     started_at: string | null;
     completed_at: string | null;
 }
+

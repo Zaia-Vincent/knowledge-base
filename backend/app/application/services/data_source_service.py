@@ -252,6 +252,94 @@ class DataSourceService:
         logger.info("Updated URLs for source %s — %d URL(s)", source_id, len(unique))
         return unique
 
+    # ── Text Management ──────────────────────────────────────────────
+
+    async def store_text(
+        self,
+        source_id: str,
+        title: str,
+        content: str,
+    ) -> dict:
+        """Store a text entry in config. Returns the new entry dict."""
+        source = await self._source_repo.get_by_id(source_id)
+        if not source:
+            raise ValueError(f"Data source {source_id} not found")
+        if source.source_type != DataSourceType.TEXT:
+            raise ValueError(f"Data source {source_id} is not a text source")
+
+        existing: list[dict] = source.config.get("texts", [])
+        entry = {
+            "id": str(uuid.uuid4()),
+            "title": title.strip(),
+            "content": content,
+            "char_count": len(content),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        existing.append(entry)
+
+        source.config["texts"] = existing
+        source.updated_at = datetime.now(timezone.utc)
+        await self._source_repo.update(source)
+        logger.info("Stored text entry '%s' for source %s", title, source_id)
+        return entry
+
+    async def get_source_texts(self, source_id: str) -> list[dict]:
+        """Return stored text entries for a text data source."""
+        source = await self._source_repo.get_by_id(source_id)
+        if not source:
+            raise ValueError(f"Data source {source_id} not found")
+        if source.source_type != DataSourceType.TEXT:
+            raise ValueError(f"Data source {source_id} is not a text source")
+        return source.config.get("texts", [])
+
+    async def remove_source_text(self, source_id: str, text_id: str) -> list[dict]:
+        """Remove a text entry from config. Returns updated text list."""
+        source = await self._source_repo.get_by_id(source_id)
+        if not source:
+            raise ValueError(f"Data source {source_id} not found")
+        if source.source_type != DataSourceType.TEXT:
+            raise ValueError(f"Data source {source_id} is not a text source")
+
+        existing: list[dict] = source.config.get("texts", [])
+        source.config["texts"] = [t for t in existing if t["id"] != text_id]
+        source.updated_at = datetime.now(timezone.utc)
+        await self._source_repo.update(source)
+        logger.info("Removed text entry %s from source %s", text_id, source_id)
+        return source.config["texts"]
+
+    async def submit_texts(
+        self,
+        source_id: str,
+        text_ids: list[str],
+    ) -> list[ProcessingJob]:
+        """Create processing jobs for selected text entries."""
+        source = await self._source_repo.get_by_id(source_id)
+        if not source:
+            raise ValueError(f"Data source {source_id} not found")
+        if source.source_type != DataSourceType.TEXT:
+            raise ValueError(f"Data source {source_id} is not a text source")
+
+        existing: list[dict] = source.config.get("texts", [])
+        known_ids = {t["id"] for t in existing}
+
+        jobs: list[ProcessingJob] = []
+        for text_id in text_ids:
+            if text_id not in known_ids:
+                logger.warning("Skipping unknown text id: %s", text_id)
+                continue
+            entry = next(t for t in existing if t["id"] == text_id)
+            job = ProcessingJob(
+                data_source_id=source_id,
+                resource_identifier=text_id,
+                resource_type="text",
+            )
+            job.progress_message = f"Queued: {entry['title']} ({entry['char_count']} chars)"
+            created = await self._job_repo.create(job)
+            jobs.append(created)
+
+        logger.info("Submitted %d text(s) for processing on source %s", len(jobs), source_id)
+        return jobs
+
     async def restart_job(self, job_id: str) -> ProcessingJob:
         """Reset a completed or failed job back to queued for reprocessing.
 

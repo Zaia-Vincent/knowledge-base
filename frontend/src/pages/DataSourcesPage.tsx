@@ -14,6 +14,7 @@ import {
     Trash2,
     Globe,
     FileUp,
+    FileText,
     ExternalLink,
     CheckCircle2,
     XCircle,
@@ -22,6 +23,7 @@ import {
     RotateCcw,
     Upload,
     ChevronRight,
+    Type,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,6 +36,7 @@ import type {
     JobStatus,
     ProcessingJob,
     SourceFileEntry,
+    SourceTextEntry,
 } from '@/types/data-sources';
 
 /* ── Tab Navigation ──────────────────────────────────────────────── */
@@ -62,7 +65,7 @@ export function DataSourcesPage() {
                     <div>
                         <h1 className="text-2xl font-bold tracking-tight">Data Sources</h1>
                         <p className="text-sm text-muted-foreground mt-1">
-                            Manage file and website data sources with background processing
+                            Manage file, website, and text data sources with background processing
                         </p>
                     </div>
                     <Button variant="ghost" size="sm" onClick={refetch} disabled={loading} className="gap-2">
@@ -163,8 +166,8 @@ function SourcesPanel({
 
     const selectedSource = sources.find((s) => s.id === selectedId) ?? null;
 
-    const handleCreate = async (name: string, description: string) => {
-        const source = await onCreate({ name, source_type: 'website', description });
+    const handleCreate = async (name: string, description: string, sourceType: DataSourceType) => {
+        const source = await onCreate({ name, source_type: sourceType, description });
         setShowAddForm(false);
         if (source && typeof source === 'object' && 'id' in source) {
             setSelectedId((source as DataSource).id);
@@ -209,15 +212,7 @@ function SourcesPanel({
                                 `}
                             >
                                 <div className="flex items-center gap-2.5">
-                                    {source.source_type === 'website' ? (
-                                        <div className="flex items-center justify-center size-8 rounded-lg bg-blue-500/10 text-blue-500 shrink-0">
-                                            <Globe className="size-3.5" />
-                                        </div>
-                                    ) : (
-                                        <div className="flex items-center justify-center size-8 rounded-lg bg-emerald-500/10 text-emerald-500 shrink-0">
-                                            <FileUp className="size-3.5" />
-                                        </div>
-                                    )}
+                                    <SourceTypeIcon type={source.source_type} size="sm" />
                                     <div className="flex-1 min-w-0">
                                         <p className="text-sm font-medium truncate">{source.name}</p>
                                         <p className="text-[11px] text-muted-foreground capitalize">
@@ -236,10 +231,10 @@ function SourcesPanel({
                     )}
 
                     {/* Inline add form */}
-                    {showAddForm && <AddWebsiteForm onSubmit={handleCreate} onCancel={() => setShowAddForm(false)} />}
+                    {showAddForm && <AddSourceForm onSubmit={handleCreate} onCancel={() => setShowAddForm(false)} />}
                 </div>
 
-                {/* Add Website Source button */}
+                {/* Add Source button */}
                 {!showAddForm && (
                     <Button
                         variant="outline"
@@ -248,7 +243,7 @@ function SourcesPanel({
                         onClick={() => setShowAddForm(true)}
                     >
                         <Plus className="size-3.5" />
-                        Add Website Source
+                        Add Source
                     </Button>
                 )}
             </div>
@@ -268,24 +263,60 @@ function SourcesPanel({
     );
 }
 
-/* ── Add Website Form ────────────────────────────────────────────── */
+/* ── Source Type Icon ─────────────────────────────────────────────── */
 
-function AddWebsiteForm({
+function SourceTypeIcon({ type, size = 'md' }: { type: DataSourceType; size?: 'sm' | 'md' }) {
+    const dim = size === 'sm' ? 'size-8' : 'size-10';
+    const radius = size === 'sm' ? 'rounded-lg' : 'rounded-xl';
+    const iconSize = size === 'sm' ? 'size-3.5' : 'size-5';
+
+    switch (type) {
+        case 'website':
+            return (
+                <div className={`flex items-center justify-center ${dim} ${radius} bg-blue-500/10 text-blue-500 shrink-0`}>
+                    <Globe className={iconSize} />
+                </div>
+            );
+        case 'text':
+            return (
+                <div className={`flex items-center justify-center ${dim} ${radius} bg-purple-500/10 text-purple-500 shrink-0`}>
+                    <FileText className={iconSize} />
+                </div>
+            );
+        default:
+            return (
+                <div className={`flex items-center justify-center ${dim} ${radius} bg-emerald-500/10 text-emerald-500 shrink-0`}>
+                    <FileUp className={iconSize} />
+                </div>
+            );
+    }
+}
+
+const SOURCE_TYPE_OPTIONS: { value: DataSourceType; label: string }[] = [
+    { value: 'website', label: 'Website' },
+    { value: 'text', label: 'Text' },
+    { value: 'file_upload', label: 'File Upload' },
+];
+
+/* ── Add Source Form ─────────────────────────────────────────────── */
+
+function AddSourceForm({
     onSubmit,
     onCancel,
 }: {
-    onSubmit: (name: string, description: string) => Promise<void>;
+    onSubmit: (name: string, description: string, sourceType: DataSourceType) => Promise<void>;
     onCancel: () => void;
 }) {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
+    const [sourceType, setSourceType] = useState<DataSourceType>('text');
     const [creating, setCreating] = useState(false);
 
     const handleSubmit = async () => {
         if (!name.trim()) return;
         setCreating(true);
         try {
-            await onSubmit(name.trim(), description.trim());
+            await onSubmit(name.trim(), description.trim(), sourceType);
         } finally {
             setCreating(false);
         }
@@ -294,9 +325,29 @@ function AddWebsiteForm({
     return (
         <div className="rounded-xl border border-primary/30 bg-primary/5 p-3.5 space-y-2.5">
             <div className="flex items-center gap-2 text-xs font-semibold text-primary">
-                <Globe className="size-3.5" />
-                New Website Source
+                <Plus className="size-3.5" />
+                New Source
             </div>
+
+            {/* Source type selector */}
+            <div className="flex gap-1 p-0.5 bg-muted/50 rounded-lg">
+                {SOURCE_TYPE_OPTIONS.map((opt) => (
+                    <button
+                        key={opt.value}
+                        onClick={() => setSourceType(opt.value)}
+                        className={`
+                            flex-1 px-2.5 py-1.5 rounded-md text-xs font-medium transition-all
+                            ${sourceType === opt.value
+                                ? 'bg-background shadow-sm text-foreground'
+                                : 'text-muted-foreground hover:text-foreground'
+                            }
+                        `}
+                    >
+                        {opt.label}
+                    </button>
+                ))}
+            </div>
+
             <Input
                 placeholder="Source name"
                 value={name}
@@ -327,6 +378,12 @@ function AddWebsiteForm({
 
 /* ── Source Detail Panel ─────────────────────────────────────────── */
 
+const SOURCE_TYPE_LABELS: Record<DataSourceType, string> = {
+    website: 'Website Source',
+    file_upload: 'File Upload',
+    text: 'Text Source',
+};
+
 function SourceDetailPanel({
     source,
     onDelete,
@@ -339,19 +396,11 @@ function SourceDetailPanel({
             {/* Source header */}
             <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
-                    {source.source_type === 'website' ? (
-                        <div className="flex items-center justify-center size-10 rounded-xl bg-blue-500/10 text-blue-500">
-                            <Globe className="size-5" />
-                        </div>
-                    ) : (
-                        <div className="flex items-center justify-center size-10 rounded-xl bg-emerald-500/10 text-emerald-500">
-                            <FileUp className="size-5" />
-                        </div>
-                    )}
+                    <SourceTypeIcon type={source.source_type} size="md" />
                     <div>
                         <h2 className="text-lg font-semibold">{source.name}</h2>
                         <p className="text-xs text-muted-foreground">
-                            {source.source_type === 'website' ? 'Website Source' : 'File Upload'} ·{' '}
+                            {SOURCE_TYPE_LABELS[source.source_type] ?? source.source_type} ·{' '}
                             {new Date(source.created_at).toLocaleDateString()}
                         </p>
                     </div>
@@ -372,11 +421,9 @@ function SourceDetailPanel({
             )}
 
             {/* Type-specific panel */}
-            {source.source_type === 'file_upload' ? (
-                <FileUploadPanel sourceId={source.id} />
-            ) : (
-                <WebsitePanel sourceId={source.id} />
-            )}
+            {source.source_type === 'file_upload' && <FileUploadPanel sourceId={source.id} />}
+            {source.source_type === 'website' && <WebsitePanel sourceId={source.id} />}
+            {source.source_type === 'text' && <TextPanel sourceId={source.id} />}
         </div>
     );
 }
@@ -879,6 +926,281 @@ function WebsitePanel({ sourceId }: { sourceId: string }) {
                             >
                                 <ExternalLink className="size-3.5" />
                                 Process All ({storedUrls.length})
+                            </Button>
+                        </div>
+                    </>
+                )}
+            </div>
+
+            {/* Result message */}
+            {result && (
+                <div className="p-3 rounded-lg bg-primary/10 text-primary text-sm">{result}</div>
+            )}
+        </div>
+    );
+}
+
+/* ── Text Panel ──────────────────────────────────────────────────── */
+
+function TextPanel({ sourceId }: { sourceId: string }) {
+    const [storedTexts, setStoredTexts] = useState<SourceTextEntry[]>([]);
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [newTitle, setNewTitle] = useState('');
+    const [newContent, setNewContent] = useState('');
+    const [loadingTexts, setLoadingTexts] = useState(true);
+    const [submitting, setSubmitting] = useState(false);
+    const [processing, setProcessing] = useState(false);
+    const [result, setResult] = useState<string | null>(null);
+
+    // Fetch texts on mount / source change
+    useEffect(() => {
+        let cancelled = false;
+        setLoadingTexts(true);
+        setResult(null);
+        dataSourcesApi
+            .getTexts(sourceId)
+            .then((res) => {
+                if (!cancelled) {
+                    setStoredTexts(res.texts);
+                    setSelectedIds(new Set(res.texts.map((t) => t.id)));
+                }
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    setStoredTexts([]);
+                    setSelectedIds(new Set());
+                }
+            })
+            .finally(() => {
+                if (!cancelled) setLoadingTexts(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [sourceId]);
+
+    // Add text entry
+    const handleAdd = useCallback(async () => {
+        const title = newTitle.trim();
+        const content = newContent.trim();
+        if (!title || !content) return;
+        setSubmitting(true);
+        setResult(null);
+        try {
+            const res = await dataSourcesApi.addText(sourceId, { title, content });
+            setStoredTexts(res.texts);
+            // Select the newly added entry
+            const newEntry = res.texts[res.texts.length - 1];
+            if (newEntry) {
+                setSelectedIds((prev) => new Set([...prev, newEntry.id]));
+            }
+            setNewTitle('');
+            setNewContent('');
+        } catch (err) {
+            setResult(err instanceof Error ? err.message : 'Failed to add text');
+        } finally {
+            setSubmitting(false);
+        }
+    }, [newTitle, newContent, sourceId]);
+
+    // Remove text entry
+    const handleRemove = useCallback(
+        async (textId: string) => {
+            try {
+                const res = await dataSourcesApi.removeText(sourceId, textId);
+                setStoredTexts(res.texts);
+                setSelectedIds((prev) => {
+                    const next = new Set(prev);
+                    next.delete(textId);
+                    return next;
+                });
+            } catch {
+                /* silent */
+            }
+        },
+        [sourceId],
+    );
+
+    // Toggle selection
+    const toggle = (id: string) => {
+        setSelectedIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    // Process texts
+    const handleProcess = async (ids: string[]) => {
+        if (!ids.length) return;
+        setProcessing(true);
+        setResult(null);
+        try {
+            const res = await dataSourcesApi.processTexts(sourceId, { text_ids: ids });
+            setResult(res.message);
+            setSelectedIds(new Set());
+        } catch (err) {
+            setResult(err instanceof Error ? err.message : 'Processing failed');
+        } finally {
+            setProcessing(false);
+        }
+    };
+
+    return (
+        <div className="space-y-4">
+            {/* Add text form */}
+            <div className="rounded-xl border bg-card p-5 space-y-4">
+                <h3 className="text-sm font-semibold flex items-center gap-2">
+                    <Type className="size-4" />
+                    Add Text
+                </h3>
+
+                <Input
+                    placeholder="Title (e.g. Meeting Notes, Article, ...)"
+                    value={newTitle}
+                    onChange={(e) => setNewTitle(e.target.value)}
+                    className="text-sm"
+                />
+                <textarea
+                    placeholder="Paste or type your text content here..."
+                    value={newContent}
+                    onChange={(e) => setNewContent(e.target.value)}
+                    rows={6}
+                    className="
+                        w-full rounded-lg border bg-background px-3 py-2 text-sm resize-y
+                        placeholder:text-muted-foreground focus-visible:outline-none
+                        focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
+                        min-h-[120px]
+                    "
+                />
+                <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">
+                        {newContent.length.toLocaleString()} characters
+                    </span>
+                    <Button
+                        size="sm"
+                        onClick={handleAdd}
+                        disabled={!newTitle.trim() || !newContent.trim() || submitting}
+                        className="gap-1.5"
+                    >
+                        {submitting ? (
+                            <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                            <Plus className="size-3.5" />
+                        )}
+                        Add Text
+                    </Button>
+                </div>
+            </div>
+
+            {/* Stored texts list */}
+            <div className="rounded-xl border bg-card p-5 space-y-4">
+                <h3 className="text-sm font-semibold flex items-center gap-2">
+                    <FileText className="size-4" />
+                    Stored Texts
+                </h3>
+
+                {loadingTexts ? (
+                    <div className="flex items-center justify-center py-6">
+                        <Loader2 className="size-5 animate-spin text-muted-foreground" />
+                    </div>
+                ) : storedTexts.length === 0 ? (
+                    <div className="text-center py-6 text-muted-foreground">
+                        <FileText className="size-10 mx-auto mb-2 opacity-15" />
+                        <p className="text-sm">No text entries yet</p>
+                        <p className="text-xs mt-1 opacity-70">Add text above to get started.</p>
+                    </div>
+                ) : (
+                    <>
+                        {/* Select controls */}
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                            <span>
+                                {selectedIds.size} of {storedTexts.length} selected
+                            </span>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() =>
+                                        setSelectedIds(new Set(storedTexts.map((t) => t.id)))
+                                    }
+                                    className="hover:text-foreground transition-colors"
+                                >
+                                    Select all
+                                </button>
+                                <button
+                                    onClick={() => setSelectedIds(new Set())}
+                                    className="hover:text-foreground transition-colors"
+                                >
+                                    Deselect all
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Text checklist */}
+                        <div className="space-y-1 max-h-72 overflow-y-auto">
+                            {storedTexts.map((entry) => (
+                                <div
+                                    key={entry.id}
+                                    className={`
+                                        group flex items-center gap-2.5 rounded-lg border px-3 py-2.5 transition-all cursor-pointer
+                                        ${selectedIds.has(entry.id) ? 'border-primary/30 bg-primary/5' : 'hover:bg-accent/50'}
+                                    `}
+                                    onClick={() => toggle(entry.id)}
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedIds.has(entry.id)}
+                                        onChange={() => toggle(entry.id)}
+                                        className="size-3.5 rounded border-input accent-primary shrink-0"
+                                    />
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium truncate">{entry.title}</p>
+                                        <p className="text-[11px] text-muted-foreground">
+                                            {entry.char_count.toLocaleString()} chars ·{' '}
+                                            {new Date(entry.created_at).toLocaleDateString()}
+                                        </p>
+                                    </div>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="size-6 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive shrink-0"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleRemove(entry.id);
+                                        }}
+                                    >
+                                        <Trash2 className="size-3" />
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Process buttons */}
+                        <div className="flex gap-2 pt-1">
+                            <Button
+                                size="sm"
+                                onClick={() => handleProcess(Array.from(selectedIds))}
+                                disabled={selectedIds.size === 0 || processing}
+                                className="gap-1.5"
+                            >
+                                {processing ? (
+                                    <Loader2 className="size-3.5 animate-spin" />
+                                ) : (
+                                    <ExternalLink className="size-3.5" />
+                                )}
+                                Process Selected ({selectedIds.size})
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                    handleProcess(storedTexts.map((t) => t.id))
+                                }
+                                disabled={storedTexts.length === 0 || processing}
+                                className="gap-1.5"
+                            >
+                                <ExternalLink className="size-3.5" />
+                                Process All ({storedTexts.length})
                             </Button>
                         </div>
                     </>

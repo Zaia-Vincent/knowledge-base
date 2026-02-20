@@ -351,6 +351,79 @@ concepts:
       file_patterns:
         - "**/*"
 
+  - id: "Image"
+    layer: L1
+    inherits: "Document"
+    abstract: false
+    label: "Image"
+    description: >
+      A visual resource — a photograph, screenshot, diagram, scan,
+      or any other image file. Inherits all Document properties
+      (date, type, summary, author) and adds image-specific metadata.
+    synonyms:
+      - "photo"
+      - "photograph"
+      - "picture"
+      - "screenshot"
+      - "scan"
+      - "diagram"
+      - "afbeelding"
+      - "foto"
+    mixins: []
+    properties:
+      - name: "width"
+        type: "integer"
+        required: false
+        description: "Image width in pixels"
+      - name: "height"
+        type: "integer"
+        required: false
+        description: "Image height in pixels"
+      - name: "image_format"
+        type: "string"
+        required: false
+        description: "Image format (e.g. PNG, JPEG, WebP, SVG)"
+      - name: "alt_text"
+        type: "string"
+        required: false
+        description: "Alternative text describing the image content"
+      - name: "description"
+        type: "string"
+        required: true
+        description: "Summary that describes the content depicted in the image"
+      - name: "color_mode"
+        type: "enum"
+        required: false
+        description: "Color profile (RGB, CMYK, Grayscale, etc.)"
+      - name: "dominant_colors"
+        type: "string[]"
+        required: false
+        description: "Primary colors present (hex codes or names)"
+      - name: "visual_subject"
+        type: "string[]"
+        required: false
+        description: "Primary subjects or content depicted in the image"
+    relationships: []
+    extraction_template:
+      classification_hints:
+        - "image"
+        - "photo"
+        - "screenshot"
+        - "picture"
+        - "diagram"
+        - "scan"
+        - "afbeelding"
+        - "foto"
+      file_patterns:
+        - "**/*.png"
+        - "**/*.jpg"
+        - "**/*.jpeg"
+        - "**/*.gif"
+        - "**/*.webp"
+        - "**/*.svg"
+        - "**/*.bmp"
+        - "**/*.tiff"
+
   - id: "DataRecord"
     layer: L1
     inherits: "Resource"

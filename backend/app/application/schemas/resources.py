@@ -50,6 +50,7 @@ class ResourceSummarySchema(BaseModel):
     concept_label: str | None = None
     origin_file_id: str | None = None
     page_range: str | None = None
+    stored_path: str | None = None
     uploaded_at: str
     processed_at: str | None = None
     error_message: str | None = None
@@ -72,6 +73,7 @@ class ResourceDetailSchema(BaseModel):
     summary: str | None = None
     language: str | None = None
     processing_time_ms: int | None = None
+    stored_path: str | None = None
     uploaded_at: str
     processed_at: str | None = None
     error_message: str | None = None

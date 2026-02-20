@@ -47,6 +47,7 @@ class ResourceProcessingService:
         ontology_repo: OntologyRepository | None = None,
         ontology_service: OntologyService | None = None,
         usage_logger=None,
+        embedding_service=None,
     ):
         self._resource_repo = file_repository
         self._storage = file_storage
@@ -57,6 +58,7 @@ class ResourceProcessingService:
         self._ontology_repo = ontology_repo
         self._ontology_service = ontology_service
         self._usage_logger = usage_logger
+        self._embedding_service = embedding_service
 
     # ── Upload Operations ────────────────────────────────────────────
 
@@ -186,7 +188,7 @@ class ResourceProcessingService:
         )
         return True
 
-    async def reprocess_resource(self, resource_id: str) -> Resource:
+    async def reprocess_resource(self, resource_id: str, *, concept_id: str | None = None) -> Resource:
         """Re-run the processing pipeline for an existing resource.
 
         Steps:
@@ -195,10 +197,15 @@ class ResourceProcessingService:
         3. Reset the root resource to PENDING state.
         4. Re-run the full processing pipeline.
 
+        Args:
+            resource_id: ID of the resource to reprocess.
+            concept_id: Optional concept override — skips classification
+                        and uses this concept directly for metadata extraction.
+
         Returns the updated root resource after reprocessing.
         Raises ValueError if the resource is not found.
         """
-        plog.separator(f"Reprocessing: resource_id={resource_id}")
+        plog.separator(f"Reprocessing: resource_id={resource_id}" + (f" concept_override={concept_id}" if concept_id else ""))
 
         resource = await self._resource_repo.get_by_id(resource_id)
         if resource is None:
@@ -237,10 +244,11 @@ class ResourceProcessingService:
             f"Reprocessing '{root.filename}'",
             resource_id=root.id,
             deleted_children=len(children),
+            concept_override=concept_id,
         )
 
         # Re-run the full processing pipeline
-        await self._process_resource(root)
+        await self._process_resource(root, concept_id=concept_id)
         return root
 
     # ── Internal Pipeline ────────────────────────────────────────────
@@ -263,7 +271,7 @@ class ResourceProcessingService:
         )
         return await self._resource_repo.create(resource)
 
-    async def _process_resource(self, resource: Resource) -> None:
+    async def _process_resource(self, resource: Resource, *, concept_id: str | None = None) -> None:
         """Run the processing pipeline, routing PDFs to the LLM path."""
         try:
             if resource.mime_type == "application/pdf" and self._llm_client and self._ontology_repo:
@@ -280,7 +288,7 @@ class ResourceProcessingService:
                     f"Using text extraction pipeline for '{resource.filename}'",
                     mime_type=resource.mime_type,
                 )
-                await self._process_via_text_extraction(resource)
+                await self._process_via_text_extraction(resource, concept_id=concept_id)
 
         except Exception as e:
             plog.step_error(PipelineStage.ERROR, f"Pipeline failed for '{resource.filename}'", error=e)
@@ -517,22 +525,41 @@ class ResourceProcessingService:
         resource.mark_done()
         await self._resource_repo.update(resource)
 
+        # Generate embeddings (non-blocking)
+        await self._generate_embeddings(resource)
+
     # ── Text Extraction Pipeline (non-PDF) ───────────────────────────
 
-    async def _process_via_text_extraction(self, resource: Resource) -> None:
+    async def _process_via_text_extraction(self, resource: Resource, *, concept_id: str | None = None) -> None:
         """Run the existing pipeline: extract text → classify → extract metadata."""
         # Step 1: Text extraction
         await self._extract_text(resource)
 
-        # Step 2: Classification
-        if self._classifier and resource.extracted_text:
+        # Step 2: Classification (skip if concept override is provided)
+        if concept_id:
+            plog.detail(f"Concept override: skipping classification, using '{concept_id}'")
+            resource.classification = ClassificationResult(
+                primary_concept_id=concept_id,
+                confidence=1.0,
+                signals=[ClassificationSignal(
+                    method="manual_override",
+                    concept_id=concept_id,
+                    score=1.0,
+                    details=f"Manually set by user to '{concept_id}'",
+                )],
+            )
+            await self._resource_repo.update(resource)
+        elif self._classifier and resource.extracted_text:
             await self._classify(resource)
 
         # Step 3: Metadata extraction
+        # When a concept override is provided, always attempt extraction
+        # even if extracted_text is empty (e.g. for images).
+        has_text = bool(resource.extracted_text)
         if (
             self._metadata_extractor
             and resource.classification
-            and resource.extracted_text
+            and (has_text or concept_id)
         ):
             await self._extract_metadata(resource)
         else:
@@ -585,6 +612,24 @@ class ResourceProcessingService:
         resource.status = ProcessingStatus.EXTRACTING_METADATA
         await self._resource_repo.update(resource)
 
+        # For image files, load the image for vision-based extraction
+        image_base64: str | None = None
+        image_mime: str | None = None
+        if resource.mime_type and resource.mime_type.startswith("image/") and resource.stored_path:
+            try:
+                image_path = Path(resource.stored_path)
+                if image_path.exists():
+                    image_bytes = image_path.read_bytes()
+                    image_base64 = base64.b64encode(image_bytes).decode("utf-8")
+                    image_mime = resource.mime_type
+                    plog.detail(
+                        f"Loaded image for vision extraction",
+                        size_kb=f"{len(image_bytes) // 1024}",
+                        mime=image_mime,
+                    )
+            except Exception as e:
+                plog.detail(f"Could not load image for vision: {e}")
+
         with plog.timed_step(
             PipelineStage.METADATA,
             f"Extracting metadata for '{resource.filename}' (concept: {resource.classification.primary_concept_id})",
@@ -592,6 +637,8 @@ class ResourceProcessingService:
             metadata, extra_fields, summary = await self._metadata_extractor.extract(
                 text=resource.extracted_text or "",
                 classification=resource.classification,
+                image_base64=image_base64,
+                mime_type=image_mime,
             )
 
         resource.metadata = metadata
@@ -603,4 +650,24 @@ class ResourceProcessingService:
         plog.stats(
             properties_extracted=len(metadata),
             has_summary=bool(summary),
+            vision_used=bool(image_base64),
         )
+
+        # Generate embeddings (non-blocking)
+        await self._generate_embeddings(resource)
+
+    async def _generate_embeddings(self, resource: Resource) -> None:
+        """Generate and store embeddings for a processed resource (best-effort)."""
+        if not self._embedding_service:
+            return
+        try:
+            count = await self._embedding_service.embed_resource(resource)
+            if count:
+                plog.detail(f"Embedded resource into {count} chunks", resource_id=resource.id)
+        except Exception as e:
+            # Embedding failures should not block the processing pipeline
+            plog.step_error(
+                PipelineStage.ERROR,
+                f"Embedding generation failed for '{resource.filename}': {e}",
+            )
+            logger.exception("Embedding generation failed for resource %s", resource.id)

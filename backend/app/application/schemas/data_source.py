@@ -85,6 +85,39 @@ class UploadFilesResponse(BaseModel):
     message: str
 
 
+# ── Text Management Schemas ──────────────────────────────────────────
+
+
+class SubmitTextRequest(BaseModel):
+    """Request body for adding a text entry to a text data source."""
+
+    title: str = Field(min_length=1, max_length=500)
+    content: str = Field(min_length=1)
+
+
+class SourceTextEntry(BaseModel):
+    """Metadata for a single stored text entry."""
+
+    id: str
+    title: str
+    content: str
+    char_count: int
+    created_at: str
+
+
+class SourceTextsResponse(BaseModel):
+    """Response with stored text entries for a text data source."""
+
+    source_id: str
+    texts: list[SourceTextEntry]
+
+
+class ProcessTextsRequest(BaseModel):
+    """Request body for processing selected stored text entries."""
+
+    text_ids: list[str] = Field(min_length=1)
+
+
 # ── Processing Job Schemas ───────────────────────────────────────────
 
 

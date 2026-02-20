@@ -110,6 +110,8 @@ class BackgroundProcessor:
                     await self._process_file_job(job, file_service)
                 elif job.resource_type == "url":
                     await self._process_url_job(job, file_service, repo, session)
+                elif job.resource_type == "text":
+                    await self._process_text_job(job, file_service, repo, session)
                 else:
                     raise ValueError(f"Unknown resource type: {job.resource_type}")
 
@@ -174,17 +176,15 @@ class BackgroundProcessor:
             captured.title,
         )
 
-        # Store the screenshot via LocalFileStorage (same as PDFs/uploads)
+        # Store the screenshot via LocalFileStorage (domain-based subfolder)
         from app.infrastructure.storage.local_file_storage import LocalFileStorage
 
         settings = get_settings()
         storage = LocalFileStorage(upload_dir=settings.upload_dir)
-        safe_title = re.sub(r"[^\w\-]", "_", captured.title or "webpage")[:80]
-        screenshot_filename = f"{safe_title}.png"
-        stored = await storage.store_file(
+        stored = await storage.store_website_capture(
             content=captured.screenshot_bytes,
-            filename=screenshot_filename,
-            original_path=url,
+            url=url,
+            title=captured.title,
         )
         screenshot_path = stored.stored_path
 
@@ -401,6 +401,58 @@ class BackgroundProcessor:
                 tool_call_count=len(first.tools_called or []),
                 request_context=f"url={url} items={len(results)}",
             )
+
+    async def _process_text_job(self, job: ProcessingJob, file_service, repo, session) -> None:
+        """Process a text job — store as file and run through the standard pipeline.
+
+        Pipeline:
+            1. Look up text entry from DataSource.config["texts"]
+            2. Store raw text content as a .txt file
+            3. Delegate to ResourceProcessingService.upload_file()
+        """
+        text_id = job.resource_identifier
+
+        # ── Step 1: Look up text entry ──────────────────────────────
+        from app.infrastructure.database.repositories import SQLAlchemyDataSourceRepository
+
+        ds_repo = SQLAlchemyDataSourceRepository(session)
+        source = await ds_repo.get_by_id(job.data_source_id)
+        if not source:
+            raise ValueError(f"Data source {job.data_source_id} not found")
+
+        entries: list[dict] = source.config.get("texts", [])
+        entry = next((t for t in entries if t["id"] == text_id), None)
+        if not entry:
+            raise ValueError(f"Text entry {text_id} not found in source config")
+
+        title = entry.get("title", "untitled")
+        content = entry.get("content", "")
+
+        job.progress_message = f"Processing text: {title}"
+        await repo.update(job)
+        await session.commit()
+        await self._broadcast_status(job)
+
+        # ── Step 2: Store as .txt file ──────────────────────────────
+        content_bytes = content.encode("utf-8")
+
+        # Sanitise title for filename
+        safe_title = re.sub(r"[^\w\s-]", "", title).strip().replace(" ", "_")[:80]
+        filename = f"{safe_title}.txt"
+
+        # ── Step 3: Delegate to existing pipeline ───────────────────
+        job.progress_message = f"Classifying: {title}"
+        await repo.update(job)
+        await session.commit()
+        await self._broadcast_status(job)
+
+        result = await file_service.upload_file(
+            content=content_bytes,
+            filename=filename,
+            data_source_id=job.data_source_id,
+        )
+
+        job.mark_completed(result.id)
 
     async def _broadcast_status(self, job: ProcessingJob) -> None:
         """Broadcast job status update to SSE clients."""

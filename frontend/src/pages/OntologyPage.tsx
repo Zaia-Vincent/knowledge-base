@@ -11,6 +11,9 @@ import {
     Info,
     GitBranch,
     X,
+    Pencil,
+    Save,
+    XCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ontologyApi } from '@/lib/ontology-api';
@@ -363,15 +366,122 @@ function InheritedGroupSection({
 function DetailPanel({
     concept,
     onDelete,
+    onUpdated,
     isDeleting,
     onEmbeddedTypeClick,
 }: {
     concept: ConceptDetail;
     onDelete: (id: string) => void;
+    onUpdated: () => void;
     isDeleting: boolean;
     onEmbeddedTypeClick: (et: EmbeddedType) => void;
 }) {
-    const canDelete = concept.layer !== 'L1' && concept.layer !== 'L2';
+    const canEdit = concept.layer !== 'L1' && concept.layer !== 'L2';
+    const [editing, setEditing] = useState(false);
+    const [saving, setSaving] = useState(false);
+
+    // ── Edit form state ────────────────────────────────────────────
+    const [editLabel, setEditLabel] = useState(concept.label);
+    const [editDescription, setEditDescription] = useState(concept.description || '');
+    const [editSynonyms, setEditSynonyms] = useState(concept.synonyms.join(', '));
+    const [editProperties, setEditProperties] = useState(
+        concept.properties.map((p) => ({ ...p }))
+    );
+    const [editHints, setEditHints] = useState(
+        concept.extraction_template?.classification_hints.join(', ') || ''
+    );
+    const [editPatterns, setEditPatterns] = useState(
+        concept.extraction_template?.file_patterns.join(', ') || ''
+    );
+
+    // Reset form when concept changes
+    useEffect(() => {
+        setEditing(false);
+        setEditLabel(concept.label);
+        setEditDescription(concept.description || '');
+        setEditSynonyms(concept.synonyms.join(', '));
+        setEditProperties(concept.properties.map((p) => ({ ...p })));
+        setEditHints(concept.extraction_template?.classification_hints.join(', ') || '');
+        setEditPatterns(concept.extraction_template?.file_patterns.join(', ') || '');
+    }, [concept]);
+
+    const handleSave = async () => {
+        try {
+            setSaving(true);
+            const synonymsList = editSynonyms
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean);
+
+            const hintsList = editHints
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean);
+            const patternsList = editPatterns
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean);
+
+            await ontologyApi.updateConcept(concept.id, {
+                label: editLabel,
+                description: editDescription,
+                synonyms: synonymsList,
+                properties: editProperties.map((p) => ({
+                    name: p.name,
+                    type: p.type,
+                    required: p.required,
+                    description: p.description,
+                })),
+                extraction_template:
+                    hintsList.length > 0 || patternsList.length > 0
+                        ? {
+                            classification_hints: hintsList,
+                            file_patterns: patternsList,
+                        }
+                        : undefined,
+            });
+            setEditing(false);
+            onUpdated();
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Save failed';
+            alert(message);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleCancel = () => {
+        setEditing(false);
+        setEditLabel(concept.label);
+        setEditDescription(concept.description || '');
+        setEditSynonyms(concept.synonyms.join(', '));
+        setEditProperties(concept.properties.map((p) => ({ ...p })));
+        setEditHints(concept.extraction_template?.classification_hints.join(', ') || '');
+        setEditPatterns(concept.extraction_template?.file_patterns.join(', ') || '');
+    };
+
+    const updateProperty = (
+        index: number,
+        field: 'name' | 'type' | 'required' | 'description',
+        value: string | boolean
+    ) => {
+        setEditProperties((prev) => {
+            const next = [...prev];
+            next[index] = { ...next[index], [field]: value };
+            return next;
+        });
+    };
+
+    const addProperty = () => {
+        setEditProperties((prev) => [
+            ...prev,
+            { name: '', type: 'string', required: false, default_value: null, description: '' },
+        ]);
+    };
+
+    const removeProperty = (index: number) => {
+        setEditProperties((prev) => prev.filter((_, i) => i !== index));
+    };
 
     return (
         <div className="space-y-6">
@@ -379,7 +489,15 @@ function DetailPanel({
             <div className="flex items-start justify-between gap-4">
                 <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                        <h2 className="text-xl font-semibold tracking-tight">{concept.label}</h2>
+                        {editing ? (
+                            <Input
+                                value={editLabel}
+                                onChange={(e) => setEditLabel(e.target.value)}
+                                className="text-xl font-semibold h-9"
+                            />
+                        ) : (
+                            <h2 className="text-xl font-semibold tracking-tight">{concept.label}</h2>
+                        )}
                         <LayerBadge layer={concept.layer} />
                         {concept.abstract && (
                             <Badge variant="outline" className="text-xs">abstract</Badge>
@@ -387,17 +505,52 @@ function DetailPanel({
                     </div>
                     <p className="text-xs text-muted-foreground font-mono">{concept.id}</p>
                 </div>
-                {canDelete && (
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                        onClick={() => onDelete(concept.id)}
-                        disabled={isDeleting}
-                    >
-                        <Trash2 className="size-4 mr-1" />
-                        Delete
-                    </Button>
+                {canEdit && (
+                    <div className="flex items-center gap-1">
+                        {editing ? (
+                            <>
+                                <Button
+                                    variant="default"
+                                    size="sm"
+                                    onClick={handleSave}
+                                    disabled={saving}
+                                >
+                                    <Save className="size-4 mr-1" />
+                                    {saving ? 'Saving…' : 'Save'}
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={handleCancel}
+                                    disabled={saving}
+                                >
+                                    <XCircle className="size-4 mr-1" />
+                                    Cancel
+                                </Button>
+                            </>
+                        ) : (
+                            <>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setEditing(true)}
+                                >
+                                    <Pencil className="size-4 mr-1" />
+                                    Edit
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                    onClick={() => onDelete(concept.id)}
+                                    disabled={isDeleting}
+                                >
+                                    <Trash2 className="size-4 mr-1" />
+                                    Delete
+                                </Button>
+                            </>
+                        )}
+                    </div>
                 )}
             </div>
 
@@ -417,11 +570,20 @@ function DetailPanel({
             )}
 
             {/* Description */}
-            {concept.description && (
+            {editing ? (
+                <Card className="p-4">
+                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Description</label>
+                    <textarea
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.target.value)}
+                        className="w-full min-h-[80px] text-sm leading-relaxed border rounded-md p-2 bg-background resize-y"
+                    />
+                </Card>
+            ) : concept.description ? (
                 <Card className="p-4">
                     <p className="text-sm leading-relaxed">{concept.description}</p>
                 </Card>
-            )}
+            ) : null}
 
             {/* Pillar + Synonyms */}
             <div className="grid grid-cols-2 gap-4">
@@ -431,24 +593,38 @@ function DetailPanel({
                         <Badge variant="secondary" className="capitalize">{concept.pillar}</Badge>
                     </div>
                 )}
-                {concept.synonyms.length > 0 && (
-                    <div>
-                        <h4 className="text-xs font-medium text-muted-foreground mb-1">Synonyms</h4>
+                <div>
+                    <h4 className="text-xs font-medium text-muted-foreground mb-1">Synonyms</h4>
+                    {editing ? (
+                        <Input
+                            value={editSynonyms}
+                            onChange={(e) => setEditSynonyms(e.target.value)}
+                            placeholder="comma-separated synonyms"
+                            className="text-xs h-8"
+                        />
+                    ) : concept.synonyms.length > 0 ? (
                         <div className="flex flex-wrap gap-1">
                             {concept.synonyms.map((s) => (
                                 <Badge key={s} variant="outline" className="text-xs">{s}</Badge>
                             ))}
                         </div>
-                    </div>
-                )}
+                    ) : (
+                        <span className="text-xs text-muted-foreground">None</span>
+                    )}
+                </div>
             </div>
 
             {/* Properties */}
-            {concept.properties.length > 0 && (
+            {(concept.properties.length > 0 || editing) && (
                 <div>
                     <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
                         <BookOpen className="size-3.5" />
                         Properties
+                        {editing && (
+                            <Button variant="ghost" size="sm" className="ml-auto h-6 text-xs" onClick={addProperty}>
+                                <Plus className="size-3 mr-1" /> Add
+                            </Button>
+                        )}
                     </h3>
                     <div className="rounded-lg border overflow-hidden">
                         <table className="w-full text-sm">
@@ -458,27 +634,75 @@ function DetailPanel({
                                     <th className="text-left px-3 py-2 font-medium text-xs">Type</th>
                                     <th className="text-left px-3 py-2 font-medium text-xs">Required</th>
                                     <th className="text-left px-3 py-2 font-medium text-xs">Description</th>
+                                    {editing && <th className="px-2 py-2 w-8" />}
                                 </tr>
                             </thead>
                             <tbody>
-                                {concept.properties.map((p) => (
-                                    <tr key={p.name} className="border-b last:border-0">
-                                        <td className="px-3 py-2 font-mono text-xs">{p.name}</td>
-                                        <td className="px-3 py-2 text-xs">
-                                            <PropertyTypeCell
-                                                typeStr={p.type}
-                                                embeddedTypes={concept.embedded_types ?? []}
-                                                onEmbeddedTypeClick={onEmbeddedTypeClick}
-                                            />
+                                {(editing ? editProperties : concept.properties).map((p, idx) => (
+                                    <tr key={editing ? idx : p.name} className="border-b last:border-0">
+                                        <td className="px-3 py-2 font-mono text-xs">
+                                            {editing ? (
+                                                <Input
+                                                    value={p.name}
+                                                    onChange={(e) => updateProperty(idx, 'name', e.target.value)}
+                                                    className="h-7 text-xs font-mono"
+                                                />
+                                            ) : (
+                                                p.name
+                                            )}
                                         </td>
                                         <td className="px-3 py-2 text-xs">
-                                            {p.required ? (
+                                            {editing ? (
+                                                <Input
+                                                    value={p.type}
+                                                    onChange={(e) => updateProperty(idx, 'type', e.target.value)}
+                                                    className="h-7 text-xs"
+                                                />
+                                            ) : (
+                                                <PropertyTypeCell
+                                                    typeStr={p.type}
+                                                    embeddedTypes={concept.embedded_types ?? []}
+                                                    onEmbeddedTypeClick={onEmbeddedTypeClick}
+                                                />
+                                            )}
+                                        </td>
+                                        <td className="px-3 py-2 text-xs">
+                                            {editing ? (
+                                                <input
+                                                    type="checkbox"
+                                                    checked={p.required}
+                                                    onChange={(e) => updateProperty(idx, 'required', e.target.checked)}
+                                                    className="accent-primary"
+                                                />
+                                            ) : p.required ? (
                                                 <span className="text-primary font-medium">Yes</span>
                                             ) : (
                                                 <span className="text-muted-foreground">No</span>
                                             )}
                                         </td>
-                                        <td className="px-3 py-2 text-xs text-muted-foreground">{p.description}</td>
+                                        <td className="px-3 py-2 text-xs text-muted-foreground">
+                                            {editing ? (
+                                                <Input
+                                                    value={p.description}
+                                                    onChange={(e) => updateProperty(idx, 'description', e.target.value)}
+                                                    className="h-7 text-xs"
+                                                />
+                                            ) : (
+                                                p.description
+                                            )}
+                                        </td>
+                                        {editing && (
+                                            <td className="px-2 py-2">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-6 w-6 p-0 text-destructive"
+                                                    onClick={() => removeProperty(idx)}
+                                                >
+                                                    <Trash2 className="size-3" />
+                                                </Button>
+                                            </td>
+                                        )}
                                     </tr>
                                 ))}
                             </tbody>
@@ -538,30 +762,46 @@ function DetailPanel({
             )}
 
             {/* Extraction Template */}
-            {concept.extraction_template && (
+            {(concept.extraction_template || editing) && (
                 <div>
                     <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
                         <Info className="size-3.5" />
                         Extraction Template
                     </h3>
                     <Card className="p-4 space-y-3">
-                        {concept.extraction_template.classification_hints.length > 0 && (
-                            <div>
-                                <h4 className="text-xs font-medium text-muted-foreground mb-1">
-                                    Classification Hints
-                                </h4>
+                        <div>
+                            <h4 className="text-xs font-medium text-muted-foreground mb-1">
+                                Classification Hints
+                            </h4>
+                            {editing ? (
+                                <Input
+                                    value={editHints}
+                                    onChange={(e) => setEditHints(e.target.value)}
+                                    placeholder="comma-separated hints"
+                                    className="text-xs h-8"
+                                />
+                            ) : concept.extraction_template && concept.extraction_template.classification_hints.length > 0 ? (
                                 <div className="flex flex-wrap gap-1">
                                     {concept.extraction_template.classification_hints.map((h) => (
                                         <Badge key={h} variant="secondary" className="text-xs">{h}</Badge>
                                     ))}
                                 </div>
-                            </div>
-                        )}
-                        {concept.extraction_template.file_patterns.length > 0 && (
-                            <div>
-                                <h4 className="text-xs font-medium text-muted-foreground mb-1">
-                                    File Patterns
-                                </h4>
+                            ) : (
+                                <span className="text-xs text-muted-foreground">None</span>
+                            )}
+                        </div>
+                        <div>
+                            <h4 className="text-xs font-medium text-muted-foreground mb-1">
+                                File Patterns
+                            </h4>
+                            {editing ? (
+                                <Input
+                                    value={editPatterns}
+                                    onChange={(e) => setEditPatterns(e.target.value)}
+                                    placeholder="comma-separated patterns"
+                                    className="text-xs h-8"
+                                />
+                            ) : concept.extraction_template && concept.extraction_template.file_patterns.length > 0 ? (
                                 <div className="flex flex-wrap gap-1">
                                     {concept.extraction_template.file_patterns.map((p) => (
                                         <code key={p} className="text-xs bg-muted px-1.5 py-0.5 rounded">
@@ -569,8 +809,10 @@ function DetailPanel({
                                         </code>
                                     ))}
                                 </div>
-                            </div>
-                        )}
+                            ) : (
+                                <span className="text-xs text-muted-foreground">None</span>
+                            )}
+                        </div>
                     </Card>
                 </div>
             )}
@@ -814,6 +1056,14 @@ export function OntologyPage() {
         }
     }, [fetchData]);
 
+    const handleUpdated = useCallback(async () => {
+        await fetchData();
+        if (selectedId) {
+            const detail = await ontologyApi.getConcept(selectedId);
+            setSelectedDetail(detail);
+        }
+    }, [fetchData, selectedId]);
+
     // ── Render ──────────────────────────────────────────────────────
 
     if (loading) {
@@ -892,6 +1142,7 @@ export function OntologyPage() {
                                                 <DetailPanel
                                                     concept={selectedDetail}
                                                     onDelete={handleDelete}
+                                                    onUpdated={handleUpdated}
                                                     isDeleting={isDeleting}
                                                     onEmbeddedTypeClick={setSelectedEmbeddedType}
                                                 />
@@ -921,6 +1172,7 @@ export function OntologyPage() {
                                         <DetailPanel
                                             concept={selectedDetail}
                                             onDelete={handleDelete}
+                                            onUpdated={handleUpdated}
                                             isDeleting={isDeleting}
                                             onEmbeddedTypeClick={setSelectedEmbeddedType}
                                         />

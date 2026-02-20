@@ -178,6 +178,48 @@ class OntologyService:
 
         return await self._repo.delete_concept(concept_id)
 
+    async def update_concept(
+        self,
+        concept_id: str,
+        *,
+        label: str | None = None,
+        description: str | None = None,
+        synonyms: list[str] | None = None,
+        properties: list[ConceptProperty] | None = None,
+        relationships: list | None = None,
+        extraction_template=None,
+    ) -> OntologyConcept:
+        """Update an existing L3+ concept (partial update).
+
+        Raises ProtectedConceptError if the concept is L1 or L2.
+        Raises ValueError if the concept does not exist.
+        """
+        concept = await self._repo.get_concept(concept_id)
+        if concept is None:
+            raise ValueError(f"Concept '{concept_id}' not found")
+
+        if concept.layer in ("L1", "L2"):
+            raise ProtectedConceptError(
+                f"Cannot modify {concept.layer} concept '{concept_id}' — only L3+ concepts may be edited"
+            )
+
+        # Merge supplied fields
+        if label is not None:
+            concept.label = label
+        if description is not None:
+            concept.description = description
+        if synonyms is not None:
+            concept.synonyms = synonyms
+        if properties is not None:
+            concept.properties = properties
+        if relationships is not None:
+            concept.relationships = relationships
+        if extraction_template is not None:
+            concept.extraction_template = extraction_template
+
+        await self._repo.save_concept(concept)
+        return concept
+
     async def get_resolved_properties(
         self, concept_id: str
     ) -> list[ConceptProperty]:
