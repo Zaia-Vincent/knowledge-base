@@ -30,10 +30,10 @@ Intent Recognition is een kerntechniek in NLP (Natural Language Processing):
 
 | Aanpak | Hoe het werkt | Wanneer gebruiken |
 |--------|---------------|-------------------|
-| **Semantic Search** | Embeddings + vector similarity | Wanneer exacte velden onbekend zijn |
-| **Structured Query** | NL → SQL/filter → database | Wanneer de ontologie de structuur definieert |
+| **Semantic Search** | Embeddings + vector similarity (pgvector) | Inhoudelijke vragen, "vind documenten over X" |
+| **Structured Query** | NL → metadata-filters → JSONB query | Exacte filters op metadata-velden |
 
-Dit project gebruikt **structured query** — de ontologie biedt al de structuur die nodig is voor nauwkeurige zoekresultaten.
+Dit project gebruikt een **hybride aanpak**: vector similarity search (pgvector) als primaire zoekmethode, met structured metadata-filters als aanvulling. Het LLM vertaalt de vraag naar een `QueryIntent` die zowel concept-filters, metadata-filters als een `text_query` kan bevatten. De `text_query` wordt omgezet naar een embedding-vector voor cosine-similarity zoekopdrachten.
 
 ## Two-Stage Flow
 
@@ -41,26 +41,32 @@ Dit project gebruikt **structured query** — de ontologie biedt al de structuur
 Gebruikersvraag
     │
     ▼
-┌──────────────────────────────┐
-│  Stage 1: Intent Resolution  │  ← LLM interpreteert de vraag
-│                              │
-│  Input:  vraag + ontologie   │
-│  Output: QueryIntent         │
-│    • concept_ids             │
-│    • metadata_filters        │
-│    • keywords                │
-│    • reasoning               │
-└─────────────┬────────────────┘
+┌──────────────────────────────────────┐
+│  Stage 1: Intent Resolution          │  ← LLM interpreteert de vraag
+│                                      │
+│  Input:  vraag + ontologie-context   │
+│  Output: QueryIntent                 │
+│    • concept_ids                     │
+│    • metadata_filters                │
+│    • text_query                      │
+│    • keywords                        │
+│    • reasoning                       │
+└─────────────┬────────────────────────┘
               │
               ▼
-┌──────────────────────────────┐
-│  Stage 2: Database Search    │  ← Deterministische query
-│                              │
-│  Input: QueryIntent          │
-│  Output: QueryResult         │
-│    • matches[]               │
-│    • total_matches           │
-└──────────────────────────────┘
+┌──────────────────────────────────────┐
+│  Stage 2: Vector + Database Search   │
+│                                      │
+│  1. Genereer query-embedding         │
+│  2. pgvector cosine similarity       │
+│  3. Filter op concept + status       │
+│  4. Deduplificatie per resource       │
+│  5. Fallback: retry zonder concept   │
+│                                      │
+│  Output: QueryResult                 │
+│    • matches[]  (met similarity)     │
+│    • total_matches                   │
+└──────────────────────────────────────┘
 ```
 
 ## Stage 1: Intent Resolution
@@ -134,38 +140,187 @@ def _deterministic_intent_resolution(self, question: str) -> QueryIntent:
                 )
 ```
 
-## Stage 2: Database Search
+## Stage 2: Vector Similarity Search (pgvector)
 
-De `QueryIntent` wordt omgezet in database-queries:
+### De Embedding Pipeline
+
+Vóór het zoeken worden documenten opgesplitst in **chunks** en voorzien van embedding-vectoren:
+
+```
+Resource (extracted_text + summary)
+    │
+    ▼
+┌────────────────────────────────┐
+│  EmbeddingService              │
+│                                │
+│  1. Bestaande chunks verwijderen│
+│  2. Tekst splitsen in chunks   │
+│     • 1200 chars per chunk     │
+│     • 200 chars overlap        │
+│     • Recursief: ¶ → \n → . →  │
+│  3. Summary als aparte chunk   │
+│  4. Batch embedding generatie  │
+│     (max 50 per API call)      │
+│  5. Opslag in resource_chunks  │
+└────────────────────────────────┘
+```
+
+### EmbeddingProvider Interface
+
+De `EmbeddingProvider` is een **abstracte port** — de concrete implementatie wordt geïnjecteerd:
 
 ```python
-async def _execute_search(self, intent: QueryIntent) -> list[QueryMatch]:
-    """Voer de database-query uit op basis van de intent."""
+class EmbeddingProvider(ABC):
+    """Port voor embedding-generatie — geïmplementeerd in de infrastructuurlaag."""
 
-    # 1. Filter op concept_ids
-    query = select(ResourceModel).where(
-        ResourceModel.concept_id.in_(intent.concept_ids)
+    @abstractmethod
+    async def generate_embeddings(self, texts: list[str]) -> list[list[float]]:
+        """Genereer embedding-vectoren voor een batch teksten."""
+        ...
+
+    @property
+    @abstractmethod
+    def dimensions(self) -> int:
+        """Dimensionaliteit van de gegenereerde vectoren."""
+        ...
+```
+
+### Concrete Implementatie: OpenRouterEmbeddingProvider
+
+De concrete provider ondersteunt zowel **Google Gemini** als **Nomic** modellen via de OpenRouter API:
+
+```python
+class OpenRouterEmbeddingProvider(EmbeddingProvider):
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "google/gemini-embedding-001",
+        model_dimensions: int = 768,
+        ...
+    ):
+        ...
+
+    @property
+    def _is_nomic(self) -> bool:
+        """Nomic-modellen vereisen task-specifieke prefixes."""
+        return "nomic" in self._model.lower()
+
+    async def generate_embeddings(self, texts: list[str], *, _query_mode=False):
+        # Nomic: voeg "search_document: " of "search_query: " prefix toe
+        if self._is_nomic:
+            prefix = "search_query: " if _query_mode else "search_document: "
+            input_texts = [f"{prefix}{t}" for t in texts]
+        else:
+            input_texts = texts  # Gemini: geen prefix nodig
+        ...
+```
+
+### Ondersteunde Embedding-modellen
+
+| Model | Provider | Dimensies | Task Prefix | Opmerkingen |
+|-------|----------|-----------|-------------|-------------|
+| `google/gemini-embedding-001` | Google via OpenRouter | 768 (Matryoshka) | Nee | **Standaard** — sneller en goedkoper |
+| `nomic-ai/nomic-embed-text-v1.5` | Nomic via OpenRouter | 768 | Ja (`search_document:` / `search_query:`) | Vereist aparte prefixes |
+
+> **Matryoshka Embeddings**: Gemini embedding-001 ondersteunt Matryoshka Representation Learning (MRL), waardoor je de dimensionaliteit kunt reduceren (3072 → 768) zonder significant kwaliteitsverlies. Dit bespaart opslagruimte en versnelt zoekopdrachten.
+
+### Configuratie
+
+Embedding-instellingen staan in de `.env` file en worden geladen via Pydantic Settings:
+
+```ini
+# .env
+EMBEDDING_MODEL=google/gemini-embedding-001
+EMBEDDING_DIMENSIONS=768
+```
+
+```python
+# config.py
+class Settings(BaseSettings):
+    embedding_model: str = "google/gemini-embedding-001"
+    embedding_dimensions: int = 768  # Gemini: Matryoshka (HNSW max: 2000)
+```
+
+### Opslag: pgvector + HNSW Index
+
+Chunks met embeddings worden opgeslagen in de `resource_chunks` tabel:
+
+```python
+class ResourceChunkModel(Base):
+    __tablename__ = "resource_chunks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    resource_id = Column(String(36), ForeignKey("resources.id", ondelete="CASCADE"))
+    chunk_index = Column(Integer, nullable=False)
+    chunk_type = Column(String(30), nullable=False)   # "text" of "summary"
+    content = Column(Text, nullable=False)
+    embedding = Column(Vector(768), nullable=True)     # pgvector kolom
+
+    __table_args__ = (
+        UniqueConstraint("resource_id", "chunk_type", "chunk_index"),
+        Index("idx_chunks_embedding_hnsw", embedding,
+              postgresql_using="hnsw",
+              postgresql_ops={"embedding": "vector_cosine_ops"}),
+    )
+```
+
+> **HNSW Index**: Hierarchical Navigable Small World — een approximate nearest neighbor index die zoekoperaties versnelt van O(n) naar O(log n). De `vector_cosine_ops` operator klasse optimaliseert voor cosine-similarity queries.
+
+### Vector Search Query
+
+De `PgChunkRepository` gebruikt de pgvector `<=>` operator voor cosine distance:
+
+```python
+async def search_similar(self, query_embedding, *, concept_ids=None, limit=20):
+    vector_str = f"[{','.join(str(v) for v in query_embedding)}]"
+
+    # literal_column() + .label() maakt de similarity score beschikbaar als kolom
+    similarity_expr = literal_column(
+        f"1 - (resource_chunks.embedding <=> '{vector_str}'::vector)"
+    ).label("similarity")
+
+    query = (
+        select(
+            ResourceChunkModel.id,
+            ResourceChunkModel.content,
+            ResourceModel.filename,
+            ResourceModel.concept_id,
+            similarity_expr,
+            ...
+        )
+        .select_from(ResourceChunkModel)
+        .join(ResourceModel, ResourceModel.id == ResourceChunkModel.resource_id)
+        .where(ResourceModel.status == "done")
+        .where(ResourceChunkModel.embedding.is_not(None))
     )
 
-    # 2. Pas metadata-filters toe (JSONB queries)
-    for filter in intent.metadata_filters:
-        if filter.operator == "contains":
-            query = query.where(
-                ResourceModel.metadata[filter.field_name]
-                    .astext.ilike(f"%{filter.value}%")
-            )
-        elif filter.operator == "gte":
-            query = query.where(
-                ResourceModel.metadata[filter.field_name]["value"]
-                    .astext >= filter.value
-            )
+    if concept_ids:
+        query = query.where(ResourceModel.concept_id.in_(concept_ids))
 
-    # 3. Optionele text search
-    if intent.text_query:
-        query = query.where(
-            ResourceModel.extracted_text.ilike(f"%{intent.text_query}%")
-        )
+    query = query.order_by(text("similarity DESC")).limit(limit)
 ```
+
+> **Cosine Distance vs. Similarity**: pgvector's `<=>` operator geeft de *afstand* (0 = identiek), terwijl we *similarity* willen (1 = identiek). Vandaar `1 - (embedding <=> query)`.
+
+### Concept-Filtered Retry
+
+Wanneer de LLM verkeerde concepten voorspelt, zou de vector search 0 resultaten opleveren. Het systeem voert automatisch een **retry zonder concept-filter** uit:
+
+```python
+# In _execute_vector_query():
+results = await self._chunk_repo.search_similar(
+    query_embedding, concept_ids=intent.concept_ids
+)
+
+# Als concept-gefilterde search niets oplevert → retry zonder filter
+if not results and intent.concept_ids:
+    logger.info("Retry zonder concept filter...")
+    results = await self._chunk_repo.search_similar(
+        query_embedding, concept_ids=None
+    )
+```
+
+Dit is essentieel voor **graceful degradation** — zelfs als intent resolution faalt, worden semantisch relevante documenten nog steeds gevonden.
 
 ### JSONB Metadata Queries
 
@@ -196,13 +351,16 @@ class QueryMatch:
     confidence: float
     summary: str | None
     metadata: dict[str, Any]
-    relevance_score: float
+    relevance_score: float       # Cosine similarity score (0.0 – 1.0)
 ```
 
 ## Leerpunten
 
-1. **Two-stage architectuur**: Scheid intent resolution (LLM, onbetrouwbaar) van database search (deterministic, betrouwbaar). Dit maakt het systeem robuuster.
-2. **Ontologie als zoekindex**: De ontologie definieert niet alleen wat je kunt *opslaan*, maar ook wat je kunt *zoeken*. Metadata-velden worden automatisch zoekbaar.
-3. **Canonicalisatie**: LLM output is onvoorspelbaar — canonical mapping corrigeert typo's en variaties.
-4. **Graceful degradation**: Als het LLM niet beschikbaar is, werkt de zoekfunctie nog steeds met deterministische matching.
-5. **JSONB queries**: PostgreSQL's JSONB-type maakt krachtige queries op geneste metadata mogelijk zonder schema-migraties.
+1. **Hybride search**: Combineer vector similarity (semantic) met structured metadata queries (exacte filters). Dit geeft het beste van beide werelden.
+2. **Embedding pipeline**: Chunking + batch embedding → opslag met pgvector is het standaardpatroon voor RAG-applicaties.
+3. **Matryoshka embeddings**: Modellen zoals Gemini embedding-001 ondersteunen dimensie-reductie zonder significant kwaliteitsverlies — optimaal voor opslag en performance.
+4. **HNSW indexing**: Approximate nearest neighbor indexing voorkomt dat vector search lineair schaalt met het aantal chunks.
+5. **Graceful degradation**: Concept-filtered retry zorgt ervoor dat het systeem werkt zelfs als intent resolution verkeerde concepten voorspelt.
+6. **Task prefixes**: Sommige embedding-modellen (Nomic) vereisen aparte prefixes voor documenten vs. queries — de provider abstraheert dit weg.
+7. **Canonicalisatie**: LLM output is onvoorspelbaar — canonical mapping corrigeert typo's en variaties in concept-namen.
+8. **JSONB queries**: PostgreSQL's JSONB-type maakt krachtige queries op geneste metadata mogelijk zonder schema-migraties.

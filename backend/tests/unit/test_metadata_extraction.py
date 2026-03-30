@@ -129,6 +129,10 @@ class FakeExtractionLLMClient(LLMClient):
     async def process_pdf_with_tools(self, pdf_base64, filename, available_concepts, tool_handler):
         return []
 
+    async def process_image_with_tools(self, image_base64, mime_type, source_url, available_concepts, tool_handler):
+        return []
+
+
 
 # ── Fixtures ─────────────────────────────────────────────────────────
 
@@ -465,6 +469,9 @@ class TestMetadataExtractionService:
                 raise NotImplementedError
 
             async def process_pdf_with_tools(self, pdf_base64, filename, available_concepts, tool_handler):
+                raise NotImplementedError
+
+            async def process_image_with_tools(self, image_base64, mime_type, source_url, available_concepts, tool_handler):
                 raise NotImplementedError
 
         service = MetadataExtractionService(ontology_repo=repo, llm_client=FailingLLM())

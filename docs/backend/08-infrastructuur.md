@@ -8,9 +8,9 @@ De infrastructuurlaag is de "adapter-laag" — ze verbindt de pure businesslogic
 
 ## Database Setup
 
-### PostgreSQL + SQLAlchemy 2.0 Async
+### PostgreSQL + pgvector + SQLAlchemy 2.0 Async
 
-Het project gebruikt PostgreSQL als database met SQLAlchemy 2.0 in asynchrone modus:
+Het project gebruikt PostgreSQL als database met de **pgvector** extensie voor vector similarity search en SQLAlchemy 2.0 in asynchrone modus:
 
 ```python
 # infrastructure/database/base.py
@@ -216,6 +216,9 @@ get_resource_processing_service(session)
     ├── OpenRouterClient(api_key)
     │   └── OpenRouterLLMClient(client, model)
     ├── LLMUsageLogger(log_repo)
+    ├── OpenRouterEmbeddingProvider(api_key, model, dimensions)
+    ├── PgChunkRepository(session)
+    ├── EmbeddingService(embedding_provider, chunk_repo)
     ├── ClassificationService(ontology_repo, llm_client, logger)
     ├── MetadataExtractionService(ontology_repo, llm_client, logger)
     ├── OntologyService(ontology_repo)
@@ -241,6 +244,10 @@ class Settings(BaseSettings):
     classification_model: str = "google/gemini-2.0-flash-001"
     pdf_processing_model: str = "google/gemini-2.0-flash-001"
 
+    # Embeddings
+    embedding_model: str = "google/gemini-embedding-001"
+    embedding_dimensions: int = 768  # Matryoshka (HNSW max: 2000)
+
     # Storage
     upload_dir: str = "data/uploads"
 
@@ -252,6 +259,8 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
     )
 ```
+
+> **Embedding-configuratie**: Het standaardmodel is `google/gemini-embedding-001` met 768 dimensies (Matryoshka reductie). Bij het wisselen naar een ander model (bijv. Nomic) moeten de `EMBEDDING_MODEL` en `EMBEDDING_DIMENSIONS` environment variabelen worden aangepast. De `resource_chunks` tabel moet opnieuw worden gevuld na een modelwissel.
 
 ### Runtime Overrides via `data/settings.json`
 

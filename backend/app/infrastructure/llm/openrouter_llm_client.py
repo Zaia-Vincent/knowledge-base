@@ -797,17 +797,24 @@ class OpenRouterLLMClient(LLMClient):
         """Extract JSON from a response that might be wrapped in markdown code blocks."""
         import re
 
-        # Try to extract from ```json ... ``` blocks (greedy to capture full content)
-        if "```" in text:
-            match = re.search(r"```(?:json)?\s*\n(.+?)\n\s*```", text, re.DOTALL)
+        content = text.strip()
+
+        # Try to extract from ```json ... ``` blocks (flexible whitespace)
+        if "```" in content:
+            match = re.search(r"```(?:json)?\s*(.*?)\s*```", content, re.DOTALL)
             if match:
                 return match.group(1).strip()
 
         # Try the raw text as JSON
-        text = text.strip()
-        if text.startswith("{") or text.startswith("["):
-            return text
+        if content.startswith("{") or content.startswith("["):
+            return content
 
-        raise ValueError(f"Could not extract JSON from LLM response: {text[:200]}")
+        # Fallback: find outermost { ... } or [ ... ] boundaries
+        start = content.find("{")
+        end = content.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            return content[start : end + 1]
+
+        raise ValueError(f"Could not extract JSON from LLM response: {content[:200]}")
 
 
